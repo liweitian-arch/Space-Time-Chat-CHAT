@@ -1,0 +1,2476 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>时空Chat — Spacetime Messages</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet-src.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+/* =============================================
+   RESET & BASE
+   ============================================= */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; }
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #050818;
+  color: #e0e8ff;
+  font-size: 14px;
+}
+
+/* =============================================
+   CSS VARIABLES
+   ============================================= */
+:root {
+  --bg-deep: #050818;
+  --cyan: #00d4ff;
+  --purple: #7b2fff;
+  --card-bg: rgba(10,20,50,0.92);
+  --border: rgba(0,212,255,0.2);
+  --border-hover: rgba(0,212,255,0.5);
+  --text-primary: #e0e8ff;
+  --text-muted: rgba(224,232,255,0.55);
+  --danger: #ff4444;
+  --yellow: #ffd700;
+  --panel-width: 360px;
+  --header-height: 56px;
+}
+
+/* =============================================
+   MAP
+   ============================================= */
+#map {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 1;
+}
+
+/* =============================================
+   HEADER
+   ============================================= */
+#header {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: var(--header-height);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  background: rgba(5,8,24,0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+
+.header-logo {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  background: linear-gradient(90deg, var(--cyan), var(--purple));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  user-select: none;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.online-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(0,212,255,0.07);
+  border: 1px solid rgba(0,212,255,0.18);
+  border-radius: 20px;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  user-select: none;
+}
+.online-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #00ff88;
+  box-shadow: 0 0 6px #00ff88;
+  flex-shrink: 0;
+  animation: online-pulse 2s ease-in-out infinite;
+}
+@keyframes online-pulse {
+  0%,100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+#online-count { font-weight: 700; color: var(--cyan); }
+
+/* Icon button */
+.icon-btn {
+  position: relative;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background 0.2s;
+}
+.icon-btn:hover { background: rgba(0,212,255,0.1); }
+.icon-btn svg { width: 22px; height: 22px; }
+
+/* Bell */
+.bell-btn {
+  position: relative;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background 0.2s;
+}
+.bell-btn:hover { background: rgba(0,212,255,0.1); }
+.bell-btn svg { width: 22px; height: 22px; }
+.bell-badge {
+  position: absolute;
+  top: 2px; right: 2px;
+  min-width: 16px; height: 16px;
+  background: var(--cyan);
+  color: #050818;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+}
+
+/* Avatar */
+.avatar-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 4px 10px 4px 4px;
+  cursor: pointer;
+  color: var(--text-primary);
+  transition: border-color 0.2s, background 0.2s;
+}
+.avatar-btn:hover { border-color: var(--border-hover); background: rgba(0,212,255,0.06); }
+.avatar-circle {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+.avatar-name { font-size: 13px; font-weight: 500; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* =============================================
+   SIDE PANELS
+   ============================================= */
+.side-panel {
+  position: fixed;
+  top: var(--header-height);
+  bottom: 0;
+  width: var(--panel-width);
+  background: var(--card-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+  z-index: 900;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+  overflow: hidden;
+}
+
+#msg-panel {
+  right: 0;
+  border-right: none;
+  border-radius: 12px 0 0 12px;
+  transform: translateX(100%);
+}
+#msg-panel.open { transform: translateX(0); }
+
+#notif-panel {
+  left: 0;
+  border-left: none;
+  border-radius: 0 12px 12px 0;
+  transform: translateX(-100%);
+}
+#notif-panel.open { transform: translateX(0); }
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.panel-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--cyan);
+  letter-spacing: 0.04em;
+}
+.panel-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  transition: color 0.2s;
+}
+.panel-close:hover { color: var(--text-primary); }
+.panel-close svg { width: 18px; height: 18px; }
+
+.panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0,212,255,0.3) transparent;
+}
+.panel-body::-webkit-scrollbar { width: 4px; }
+.panel-body::-webkit-scrollbar-track { background: transparent; }
+.panel-body::-webkit-scrollbar-thumb { background: rgba(0,212,255,0.3); border-radius: 2px; }
+
+/* =============================================
+   MESSAGE PANEL CONTENT
+   ============================================= */
+.msg-author-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.msg-author-info { flex: 1; min-width: 0; }
+.msg-author-name { font-weight: 600; font-size: 14px; }
+.msg-author-time { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.msg-coords {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+  letter-spacing: 0.03em;
+}
+.gps-badge-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(0,255,136,0.12);
+  color: #00ff88;
+  border: 1px solid rgba(0,255,136,0.3);
+  border-radius: 8px;
+  font-size: 10px;
+  padding: 1px 6px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.msg-text {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.msg-image {
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+}
+.msg-expiry {
+  font-size: 11px;
+  color: var(--yellow);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.msg-expiry.urgent { color: var(--danger); }
+.msg-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.like-btn, .follow-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+.like-btn:hover { border-color: var(--danger); color: var(--danger); background: rgba(255,68,68,0.08); }
+.like-btn.liked { border-color: var(--danger); color: var(--danger); background: rgba(255,68,68,0.12); }
+.follow-btn:hover { border-color: var(--cyan); color: var(--cyan); background: rgba(0,212,255,0.08); }
+.follow-btn.following { border-color: var(--purple); color: var(--purple); background: rgba(123,47,255,0.12); }
+.like-count { font-size: 12px; }
+
+/* Replies */
+.replies-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 10px;
+}
+.reply-item {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.reply-content { flex: 1; min-width: 0; }
+.reply-author { font-size: 12px; font-weight: 600; margin-bottom: 2px; }
+.reply-time { font-size: 10px; color: var(--text-muted); margin-left: 6px; font-weight: 400; }
+.reply-text { font-size: 13px; color: var(--text-primary); line-height: 1.5; word-break: break-word; white-space: pre-wrap; }
+.reply-image { width: 100%; max-height: 120px; object-fit: cover; border-radius: 6px; margin-top: 6px; border: 1px solid var(--border); }
+
+/* Reply input */
+.reply-input-area {
+  border-top: 1px solid var(--border);
+  padding: 12px;
+  flex-shrink: 0;
+  background: rgba(5,8,24,0.6);
+}
+.reply-input-area textarea {
+  width: 100%;
+  background: rgba(0,212,255,0.04);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: none;
+  outline: none;
+  transition: border-color 0.2s;
+  margin-bottom: 8px;
+  min-height: 68px;
+}
+.reply-input-area textarea:focus { border-color: var(--border-hover); }
+.reply-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.reply-img-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px; height: 32px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+.reply-img-label:hover { border-color: var(--cyan); color: var(--cyan); }
+.reply-img-label svg { width: 16px; height: 16px; }
+.reply-img-preview {
+  flex: 1;
+  font-size: 11px;
+  color: var(--cyan);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.send-btn {
+  padding: 6px 16px;
+  border-radius: 16px;
+  border: none;
+  background: linear-gradient(135deg, var(--cyan), var(--purple));
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  flex-shrink: 0;
+}
+.send-btn:hover { opacity: 0.85; }
+.send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* =============================================
+   NOTIFICATION PANEL
+   ============================================= */
+.notif-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mark-read-btn {
+  font-size: 11px;
+  color: var(--cyan);
+  background: none;
+  border: 1px solid rgba(0,212,255,0.3);
+  border-radius: 10px;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.mark-read-btn:hover { background: rgba(0,212,255,0.08); }
+
+.notif-item {
+  display: flex;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(0,212,255,0.08);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+.notif-item:hover { background: rgba(0,212,255,0.04); }
+.notif-item.unread .notif-text { font-weight: 600; color: var(--text-primary); }
+.notif-icon {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.notif-icon.nearby { background: rgba(0,212,255,0.15); color: var(--cyan); }
+.notif-icon.followed_post { background: rgba(123,47,255,0.15); color: var(--purple); }
+.notif-icon.reply { background: rgba(0,212,255,0.1); color: var(--cyan); }
+.notif-icon.like { background: rgba(255,68,68,0.1); color: var(--danger); }
+.notif-content { flex: 1; min-width: 0; }
+.notif-text { font-size: 13px; color: var(--text-muted); line-height: 1.4; margin-bottom: 3px; }
+.notif-time { font-size: 10px; color: var(--text-muted); opacity: 0.7; }
+.notif-jump {
+  font-size: 11px;
+  color: var(--cyan);
+  background: none;
+  border: 1px solid rgba(0,212,255,0.25);
+  border-radius: 8px;
+  padding: 3px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  align-self: flex-start;
+  margin-top: 2px;
+  transition: background 0.2s;
+}
+.notif-jump:hover { background: rgba(0,212,255,0.1); }
+.no-notifs { text-align: center; color: var(--text-muted); font-size: 13px; padding: 40px 0; }
+
+/* =============================================
+   MODALS
+   ============================================= */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(5,8,24,0.78);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.modal-overlay.hidden { display: none; }
+
+.modal {
+  background: rgba(8,14,38,0.98);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 420px;
+  padding: 24px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.7), 0 0 40px rgba(0,212,255,0.05);
+}
+.modal-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--cyan);
+  margin-bottom: 20px;
+  letter-spacing: 0.04em;
+}
+.modal label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 6px;
+  margin-top: 14px;
+}
+.modal label:first-of-type { margin-top: 0; }
+.modal input[type="text"],
+.modal textarea {
+  width: 100%;
+  background: rgba(0,212,255,0.05);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.modal input[type="text"]:focus,
+.modal textarea:focus { border-color: var(--border-hover); }
+.modal textarea { resize: vertical; min-height: 90px; }
+.img-upload-area {
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+.img-upload-area:hover { border-color: var(--border-hover); background: rgba(0,212,255,0.03); }
+.img-upload-area input { display: none; }
+.img-upload-label { font-size: 12px; color: var(--text-muted); cursor: pointer; }
+.img-upload-label span { color: var(--cyan); }
+.img-preview-container { margin-top: 10px; display: none; }
+.img-preview-container img { max-width: 100%; max-height: 150px; border-radius: 6px; object-fit: cover; }
+.img-remove-btn {
+  font-size: 11px;
+  color: var(--danger);
+  background: none;
+  border: none;
+  cursor: pointer;
+  margin-top: 4px;
+  text-decoration: underline;
+}
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+  justify-content: flex-end;
+}
+.btn-primary {
+  padding: 9px 22px;
+  border-radius: 20px;
+  border: none;
+  background: linear-gradient(135deg, var(--cyan), var(--purple));
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.btn-primary:hover { opacity: 0.85; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-secondary {
+  padding: 9px 18px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-secondary:hover { border-color: var(--border-hover); color: var(--text-primary); }
+.error-msg {
+  font-size: 12px;
+  color: var(--danger);
+  margin-top: 8px;
+  display: none;
+}
+
+/* GPS row in post modal */
+.gps-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  margin-bottom: 4px;
+}
+.gps-btn {
+  padding: 6px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(0,255,136,0.4);
+  background: rgba(0,255,136,0.07);
+  color: #00ff88;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.gps-btn:hover { background: rgba(0,255,136,0.15); border-color: #00ff88; }
+
+/* =============================================
+   USER PROFILE PANEL (modal-style)
+   ============================================= */
+#profile-modal .modal { max-width: 380px; }
+.profile-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.profile-avatar { width: 54px; height: 54px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; color: #fff; }
+.profile-info { flex: 1; }
+.profile-name { font-size: 17px; font-weight: 700; }
+.profile-since { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+.profile-stats { display: flex; gap: 20px; margin-bottom: 18px; }
+.profile-stat { text-align: center; }
+.profile-stat-num { font-size: 18px; font-weight: 700; color: var(--cyan); }
+.profile-stat-label { font-size: 11px; color: var(--text-muted); }
+.switch-user-btn {
+  width: 100%;
+  padding: 9px;
+  border-radius: 10px;
+  border: 1px solid rgba(123,47,255,0.4);
+  background: rgba(123,47,255,0.08);
+  color: var(--purple);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-bottom: 8px;
+}
+.switch-user-btn:hover { background: rgba(123,47,255,0.16); border-color: var(--purple); }
+
+/* =============================================
+   FAB BUTTONS
+   ============================================= */
+.fab {
+  position: fixed;
+  z-index: 800;
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--cyan);
+  transition: all 0.2s;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+.fab:hover { border-color: var(--cyan); background: rgba(0,212,255,0.1); }
+.fab svg { width: 20px; height: 20px; }
+
+#fab-locate { bottom: 24px; right: 20px; }
+
+/* =============================================
+   LEAFLET CUSTOM
+   ============================================= */
+.leaflet-container { background: #050818 !important; }
+.leaflet-popup-content-wrapper {
+  background: var(--card-bg) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 10px !important;
+  color: var(--text-primary) !important;
+  backdrop-filter: blur(10px);
+}
+.leaflet-popup-tip { background: var(--card-bg) !important; }
+.leaflet-popup-close-button { color: var(--text-muted) !important; }
+
+/* =============================================
+   MARKER ANIMATIONS — 4 tiers
+   ============================================= */
+@keyframes pulse-slow   { 0%,100%{transform:scale(1);opacity:.9} 50%{transform:scale(1.6);opacity:0} }
+@keyframes pulse-medium { 0%,100%{transform:scale(1);opacity:.9} 50%{transform:scale(1.8);opacity:0} }
+@keyframes pulse-fast   { 0%,100%{transform:scale(1);opacity:.9} 50%{transform:scale(2);opacity:0} }
+@keyframes pulse-dying  { 0%,100%{transform:scale(1);opacity:1}  50%{transform:scale(2.4);opacity:0} }
+@keyframes flicker { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+.marker-dot {
+  position: relative;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.marker-dot::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  animation: var(--pulse-anim) var(--pulse-dur) ease-out infinite;
+  background: var(--dot-color);
+  opacity: 0.7;
+}
+.marker-label {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--dot-color);
+  text-shadow: 0 0 6px var(--dot-color);
+  pointer-events: none;
+  font-family: 'Courier New', monospace;
+}
+
+/* =============================================
+   POST CLICK HINT
+   ============================================= */
+#map-hint {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 7px 18px;
+  font-size: 12px;
+  color: var(--text-muted);
+  z-index: 700;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+  opacity: 0.85;
+}
+
+/* =============================================
+   LOADING OVERLAY
+   ============================================= */
+#loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(5,8,24,0.92);
+  z-index: 3000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+}
+#loading-overlay.hidden { display: none; }
+.loading-spinner {
+  width: 44px; height: 44px;
+  border: 3px solid rgba(0,212,255,0.2);
+  border-top-color: var(--cyan);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { color: var(--text-muted); font-size: 13px; }
+
+/* =============================================
+   TOAST
+   ============================================= */
+#toast-container {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 4000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  background: rgba(8,14,38,0.97);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 8px 20px;
+  font-size: 13px;
+  color: var(--text-primary);
+  backdrop-filter: blur(10px);
+  animation: toast-in 0.3s ease, toast-out 0.3s ease 2.7s forwards;
+  white-space: nowrap;
+}
+.toast.error { border-color: rgba(255,68,68,0.5); color: var(--danger); }
+.toast.success { border-color: rgba(0,212,255,0.5); color: var(--cyan); }
+@keyframes toast-in  { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+@keyframes toast-out { from { opacity:1; } to { opacity:0; } }
+
+/* =============================================
+   SETUP OVERLAY
+   ============================================= */
+#setup-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(5,8,24,0.97);
+  z-index: 5000;
+  overflow-y: auto;
+  padding: 40px 20px;
+  display: none;
+}
+#setup-overlay.visible { display: block; }
+#setup-overlay .setup-inner {
+  max-width: 720px;
+  margin: 0 auto;
+  background: rgba(8,14,38,0.98);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 32px;
+}
+#setup-overlay h2 { color: var(--cyan); font-size: 22px; margin-bottom: 12px; }
+#setup-overlay p { color: var(--text-muted); font-size: 14px; line-height: 1.6; margin-bottom: 10px; }
+#setup-overlay ol { color: var(--text-muted); font-size: 14px; line-height: 2; padding-left: 20px; margin-bottom: 10px; }
+#setup-overlay ol li { margin-bottom: 6px; }
+#setup-overlay strong { color: var(--cyan); }
+#setup-overlay pre {
+  background: rgba(0,0,0,0.5);
+  border: 1px solid rgba(0,212,255,0.2);
+  border-radius: 8px;
+  padding: 16px;
+  font-size: 11px;
+  color: #a8d8ea;
+  overflow-x: auto;
+  margin: 14px 0;
+  font-family: 'Courier New', monospace;
+  white-space: pre;
+  line-height: 1.5;
+}
+
+/* =============================================
+   MOBILE RESPONSIVE
+   ============================================= */
+@media (max-width: 600px) {
+  :root { --panel-width: 100vw; }
+  .side-panel {
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+  #msg-panel { border-radius: 12px 12px 0 0; top: auto; bottom: 0; height: 85vh; transform: translateY(100%); }
+  #msg-panel.open { transform: translateY(0); }
+  #notif-panel { border-radius: 12px 12px 0 0; top: auto; bottom: 0; height: 85vh; transform: translateY(100%); }
+  #notif-panel.open { transform: translateY(0); }
+  #header { padding: 0 10px; }
+  .header-logo { font-size: 15px; }
+  .avatar-name { display: none; }
+  .modal { padding: 18px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     SETUP OVERLAY
+     ============================================================ -->
+<div id="setup-overlay">
+  <div class="setup-inner">
+    <h2>配置 Supabase</h2>
+    <p>请先创建 Supabase 项目并填写以下信息：</p>
+
+    <div style="margin-bottom: 24px; padding: 16px; background: rgba(123,47,255,0.08); border-radius: 8px; border-left: 3px solid var(--purple);">
+      <div style="font-size: 14px; color: var(--cyan); margin-bottom: 8px; font-weight: 600;">&#9888; 重要：选择正确的设置方式</div>
+      <div style="font-size: 13px; color: var(--text-muted); line-height: 1.5;">
+        <strong>情况 A：全新安装（首次使用时空Chat）</strong><br>
+        运行下方完整的 SQL 创建所有表。
+      </div>
+      <div style="font-size: 13px; color: var(--text-muted); line-height: 1.5; margin-top: 12px;">
+        <strong>情况 B：已有数据库（正在修复图标发布错误）</strong><br>
+        <strong>不要运行完整 SQL！</strong> 只需运行下方的升级命令即可。
+      </div>
+    </div>
+
+    <div style="margin-bottom: 20px;">
+      <h3 style="font-size: 15px; color: var(--cyan); margin-bottom: 8px;">📦 完整安装 SQL（全新安装使用）</h3>
+      <pre>/* 复制此 SQL 到 Supabase SQL Editor 运行 */
+CREATE TABLE stx_users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  avatar_color TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE TABLE stx_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES stx_users(id),
+  lat DOUBLE PRECISION NOT NULL,
+  lng DOUBLE PRECISION NOT NULL,
+  text TEXT NOT NULL,
+  image_data TEXT,
+  icon_type TEXT DEFAULT 'dot',
+  is_real_location BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  last_activity_at TIMESTAMPTZ DEFAULT NOW(),
+  expires_at TIMESTAMPTZ NOT NULL
+);
+CREATE TABLE stx_replies (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  message_id UUID REFERENCES stx_messages(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES stx_users(id),
+  text TEXT NOT NULL,
+  image_data TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE TABLE stx_likes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  message_id UUID REFERENCES stx_messages(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES stx_users(id),
+  UNIQUE(message_id, user_id)
+);
+CREATE TABLE stx_follows (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  follower_id UUID REFERENCES stx_users(id),
+  following_id UUID REFERENCES stx_users(id),
+  UNIQUE(follower_id, following_id)
+);
+CREATE TABLE stx_notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  for_user_id UUID REFERENCES stx_users(id),
+  type TEXT,
+  message_id UUID REFERENCES stx_messages(id) ON DELETE CASCADE,
+  from_user_id UUID REFERENCES stx_users(id),
+  text TEXT,
+  read BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE stx_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stx_users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stx_replies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stx_likes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stx_follows ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stx_notifications ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "public read"   ON stx_messages FOR SELECT USING (true);
+CREATE POLICY "public insert" ON stx_messages FOR INSERT WITH CHECK (true);
+CREATE POLICY "public update" ON stx_messages FOR UPDATE USING (true);
+CREATE POLICY "public delete" ON stx_messages FOR DELETE USING (true);
+CREATE POLICY "public read"   ON stx_users FOR SELECT USING (true);
+CREATE POLICY "public insert" ON stx_users FOR INSERT WITH CHECK (true);
+CREATE POLICY "public read"   ON stx_replies FOR SELECT USING (true);
+CREATE POLICY "public insert" ON stx_replies FOR INSERT WITH CHECK (true);
+CREATE POLICY "public read"   ON stx_likes FOR SELECT USING (true);
+CREATE POLICY "public insert" ON stx_likes FOR INSERT WITH CHECK (true);
+CREATE POLICY "public delete" ON stx_likes FOR DELETE USING (true);
+CREATE POLICY "public read"   ON stx_follows FOR SELECT USING (true);
+CREATE POLICY "public insert" ON stx_follows FOR INSERT WITH CHECK (true);
+CREATE POLICY "public delete" ON stx_follows FOR DELETE USING (true);
+CREATE POLICY "public read"   ON stx_notifications FOR SELECT USING (true);
+CREATE POLICY "public insert" ON stx_notifications FOR INSERT WITH CHECK (true);
+CREATE POLICY "public update" ON stx_notifications FOR UPDATE USING (true);</pre>
+    </div>
+
+    <div style="margin-bottom: 20px;">
+      <h3 style="font-size: 15px; color: var(--cyan); margin-bottom: 8px;">🔄 升级 SQL（已有数据库，添加图标功能）</h3>
+      <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px;">
+        如果您遇到 "could not find the 'icon_type' column" 错误，说明数据库已存在但缺少图标字段。<br>
+        <strong>只需运行以下命令：</strong>
+      </div>
+      <pre style="font-size: 13px; padding: 12px; background: rgba(0,212,255,0.08); border-radius: 6px; border-left: 4px solid var(--cyan);">
+-- 在 Supabase SQL Editor 中运行此命令
+ALTER TABLE stx_messages ADD COLUMN IF NOT EXISTS icon_type TEXT DEFAULT 'dot';</pre>
+      <div style="font-size: 12px; color: var(--text-muted); margin-top: 8px;">
+        ✅ 此命令安全：不会影响现有数据，只会添加缺少的字段
+      </div>
+    </div>
+
+    <ol>
+      <li>前往 <strong>supabase.com</strong> 创建免费项目</li>
+      <li>根据您的情况运行上方对应的 SQL</li>
+      <li>在 Project Settings &rarr; API 中复制 URL 和 anon key，填入代码顶部的 <strong>SUPABASE_URL</strong> 和 <strong>SUPABASE_ANON</strong> 变量后刷新页面。</li>
+    </ol>
+  </div>
+</div>
+
+<!-- ============================================================
+     LOADING OVERLAY
+     ============================================================ -->
+<div id="loading-overlay">
+  <div class="loading-spinner"></div>
+  <div class="loading-text">正在连接时空...</div>
+</div>
+
+<!-- ============================================================
+     HEADER
+     ============================================================ -->
+<div id="header">
+  <div class="header-logo">&#10022; 时空Chat</div>
+  <div class="header-right">
+    <div class="online-pill" id="online-pill">
+      <span class="online-dot"></span>
+      <span id="online-count">0</span>
+      <span>人在线</span>
+    </div>
+    <button class="icon-btn" id="info-btn" title="规则与说明">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="12" y1="16" x2="12" y2="12"/>
+        <line x1="12" y1="8" x2="12.01" y2="8"/>
+      </svg>
+    </button>
+    <button class="icon-btn" id="locate-btn" title="定位到我的位置">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+        <circle cx="12" cy="12" r="9" opacity="0.3"/>
+      </svg>
+    </button>
+    <button class="bell-btn" id="bell-btn" title="通知" aria-label="通知">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+        <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+      </svg>
+      <span class="bell-badge" id="bell-badge">0</span>
+    </button>
+    <button class="avatar-btn" id="avatar-btn">
+      <div class="avatar-circle" id="header-avatar"></div>
+      <span class="avatar-name" id="header-name">...</span>
+    </button>
+  </div>
+</div>
+
+<!-- ============================================================
+     MAP
+     ============================================================ -->
+<div id="map"></div>
+<div id="map-hint">点击地图任意位置发布信息</div>
+
+<!-- ============================================================
+     FAB BUTTONS
+     ============================================================ -->
+<button class="fab" id="fab-locate" title="定位到我的位置">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="3"/>
+    <path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+    <circle cx="12" cy="12" r="9" opacity="0.3"/>
+  </svg>
+</button>
+
+<!-- ============================================================
+     MESSAGE DETAIL PANEL
+     ============================================================ -->
+<div class="side-panel" id="msg-panel">
+  <div class="panel-header">
+    <span class="panel-title">信息详情</span>
+    <button class="panel-close" id="msg-panel-close">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+      </svg>
+    </button>
+  </div>
+  <div class="panel-body" id="msg-panel-body"></div>
+  <div class="reply-input-area" id="reply-input-area">
+    <textarea id="reply-text" placeholder="写下你的回复..."></textarea>
+    <div class="reply-input-row">
+      <label class="reply-img-label" title="添加图片">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
+          <polyline points="21 15 16 10 5 21"/>
+        </svg>
+        <input type="file" id="reply-img-input" accept="image/*" style="display:none">
+      </label>
+      <span class="reply-img-preview" id="reply-img-preview"></span>
+      <button class="send-btn" id="send-reply-btn">发送</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     NOTIFICATION PANEL
+     ============================================================ -->
+<div class="side-panel" id="notif-panel">
+  <div class="panel-header">
+    <span class="panel-title">通知</span>
+    <div class="notif-header-actions">
+      <button class="mark-read-btn" id="mark-read-btn">全部已读</button>
+      <button class="panel-close" id="notif-panel-close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+  <div class="panel-body" id="notif-panel-body"></div>
+</div>
+
+<!-- ============================================================
+     LOGIN MODAL
+     ============================================================ -->
+<div class="modal-overlay hidden" id="login-modal">
+  <div class="modal">
+    <div class="modal-title">欢迎来到时空Chat</div>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;line-height:1.5">
+      在时间的经纬上刻下瞬间的印记，<br>
+      让话语如星辰般散落在地图的角落。<br>
+      <strong>24小时后，信息将如朝露般消散</strong>，<br>
+      唯留此刻的共鸣在时空中回响。
+    </p>
+    <div style="font-size:12px;color:var(--cyan);margin-bottom:16px;display:flex;align-items:center;gap:4px;cursor:pointer" id="login-show-info">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+      </svg>
+      <span>了解诗意与规则</span>
+    </div>
+    <label>你的名字</label>
+    <input type="text" id="login-name" placeholder="输入用户名..." maxlength="20">
+    <div class="error-msg" id="login-error">请输入用户名</div>
+    <div class="modal-actions">
+      <button class="btn-primary" id="login-submit">进入时空</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     POST MESSAGE MODAL
+     ============================================================ -->
+<div class="modal-overlay hidden" id="post-modal">
+  <div class="modal">
+    <div class="modal-title">发布时空信息</div>
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-family:'Courier New',monospace" id="post-coords"></div>
+    <div class="gps-row">
+      <button id="use-gps-btn" class="gps-btn">&#128205; 使用真实位置</button>
+      <span id="gps-status" style="font-size:11px;color:var(--text-muted)"></span>
+    </div>
+
+    <div style="margin-bottom: 16px;">
+      <label style="display:block;margin-bottom:8px;font-size:13px;color:var(--text-primary);">选择标记图标（可选）</label>
+      <div class="icon-selector" id="icon-selector" style="display:flex;flex-wrap:wrap;gap:8px;">
+        <button type="button" class="icon-option active" data-icon="dot" title="圆点标记" style="width:36px;height:36px;border-radius:50%;border:2px solid var(--cyan);background:rgba(0,212,255,0.1);display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;transition:all 0.2s;">●</button>
+        <button type="button" class="icon-option" data-icon="star" title="星星" style="width:36px;height:36px;border-radius:50%;border:1px solid var(--border);background:rgba(10,20,50,0.5);display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer;transition:all 0.2s;">⭐</button>
+        <button type="button" class="icon-option" data-icon="heart" title="爱心" style="width:36px;height:36px;border-radius:50%;border:1px solid var(--border);background:rgba(10,20,50,0.5);display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;transition:all 0.2s;">❤️</button>
+        <button type="button" class="icon-option" data-icon="smile" title="笑脸" style="width:36px;height:36px;border-radius:50%;border:1px solid var(--border);background:rgba(10,20,50,0.5);display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;transition:all 0.2s;">😊</button>
+        <button type="button" class="icon-option" data-icon="sun" title="太阳" style="width:36px;height:36px;border-radius:50%;border:1px solid var(--border);background:rgba(10,20,50,0.5);display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;transition:all 0.2s;">☀️</button>
+        <button type="button" class="icon-option" data-icon="moon" title="月亮" style="width:36px;height:36px;border-radius:50%;border:1px solid var(--border);background:rgba(10,20,50,0.5);display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;transition:all 0.2s;">🌙</button>
+        <button type="button" class="icon-option" data-icon="flower" title="花朵" style="width:36px;height:36px;border-radius:50%;border:1px solid var(--border);background:rgba(10,20,50,0.5);display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;transition:all 0.2s;">🌸</button>
+        <button type="button" class="icon-option" data-icon="cloud" title="云朵" style="width:36px;height:36px;border-radius:50%;border:1px solid var(--border);background:rgba(10,20,50,0.5);display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;transition:all 0.2s;">☁️</button>
+        <button type="button" class="icon-option" data-icon="coffee" title="咖啡" style="width:36px;height:36px;border-radius:50%;border:1px solid var(--border);background:rgba(10,20,50,0.5);display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;transition:all 0.2s;">☕</button>
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">点击图标选择标记样式，默认使用圆点</div>
+    </div>
+
+    <label>内容 *</label>
+    <textarea id="post-text" placeholder="此刻你想说什么..." style="min-height:100px"></textarea>
+    <div class="error-msg" id="post-error">请输入内容</div>
+    <label>图片（可选）</label>
+    <div class="img-upload-area">
+      <label class="img-upload-label">
+        <input type="file" id="post-img-input" accept="image/*">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:5px">
+          <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
+          <polyline points="21 15 16 10 5 21"/>
+        </svg>
+        <span>点击选择图片</span>（&lt;500KB）
+      </label>
+      <div class="img-preview-container" id="post-img-preview-container">
+        <img id="post-img-preview" alt="预览">
+        <div><button class="img-remove-btn" id="post-img-remove">移除图片</button></div>
+      </div>
+    </div>
+    <div class="error-msg" id="post-img-error"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="post-cancel">取消</button>
+      <button class="btn-primary" id="post-submit">发布</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     SWITCH USER MODAL
+     ============================================================ -->
+<div class="modal-overlay hidden" id="switch-modal">
+  <div class="modal">
+    <div class="modal-title">切换用户</div>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;line-height:1.5">创建新用户或从已有用户中选择登录。</p>
+    <div id="switch-user-list" style="margin-bottom:16px;display:flex;flex-direction:column;gap:8px"></div>
+    <label>创建新用户</label>
+    <input type="text" id="switch-new-name" placeholder="新用户名..." maxlength="20">
+    <div class="error-msg" id="switch-error"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="switch-cancel">取消</button>
+      <button class="btn-primary" id="switch-create">创建并切换</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     PROFILE MODAL
+     ============================================================ -->
+<div class="modal-overlay hidden" id="profile-modal">
+  <div class="modal">
+    <div class="modal-title">个人资料</div>
+    <div id="profile-content"></div>
+    <button class="switch-user-btn" id="open-switch-btn">切换用户</button>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="profile-close">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     INFO/RULES MODAL
+     ============================================================ -->
+<div class="modal-overlay hidden" id="info-modal">
+  <div class="modal" style="max-width: 500px;">
+    <div class="modal-title">&#10022; 时空Chat · 诗意与规则</div>
+
+    <div style="margin-bottom: 24px; padding: 16px; background: rgba(0,212,255,0.05); border-radius: 8px; border-left: 3px solid var(--cyan);">
+      <div style="font-size: 15px; line-height: 1.7; color: var(--text-primary); margin-bottom: 8px;">
+        <strong>诗意 · 时空絮语</strong>
+      </div>
+      <div style="font-size: 14px; line-height: 1.6; color: var(--text-muted);">
+        我们行走在时间的长河，<br>
+        每一处足迹都铭刻着瞬间的温度。<br>
+        在地球的经纬间，留下只言片语，<br>
+        让陌生的灵魂在时空的交叉点相遇。<br>
+        <br>
+        信息如露亦如电，<br>
+        24小时后便消散于虚空。<br>
+        此刻的真心，此刻的共鸣，<br>
+        才是永恒的回响。
+      </div>
+    </div>
+
+    <div style="margin-bottom: 24px;">
+      <div style="font-size: 15px; line-height: 1.7; color: var(--cyan); margin-bottom: 12px;">
+        <strong>✨ 平台规则</strong>
+      </div>
+      <ol style="padding-left: 20px; margin: 0; font-size: 14px; line-height: 1.6; color: var(--text-primary);">
+        <li style="margin-bottom: 10px;">消息默认存在 <strong>24小时</strong>，每次收到回复会重置24小时倒计时（可超过24小时）</li>
+        <li style="margin-bottom: 10px;">点击地图任意位置即可发布信息</li>
+        <li style="margin-bottom: 10px;">可选择使用真实地理位置或自由选择位置</li>
+        <li style="margin-bottom: 10px;">可上传图片（小于500KB）丰富表达</li>
+        <li style="margin-bottom: 10px;">可为他人信息点赞、回复，建立时空对话</li>
+        <li style="margin-bottom: 10px;">请保持友善，尊重他人，创造温暖的时空社区</li>
+        <li style="margin-bottom: 10px;">信息一旦发布，在有效期内无法删除</li>
+        <li>切换用户可匿名参与，保护隐私</li>
+      </ol>
+    </div>
+
+    <div style="font-size: 12px; color: var(--text-muted); line-height: 1.5; padding-top: 16px; border-top: 1px solid var(--border);">
+      技术架构：Leaflet地图 + Supabase实时数据库<br>
+      设计理念：短暂的存在，永恒的瞬间
+    </div>
+
+    <div class="modal-actions" style="margin-top: 24px;">
+      <button class="btn-primary" id="info-close">我明白了</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     TOAST CONTAINER
+     ============================================================ -->
+<div id="toast-container"></div>
+
+<script>
+// ── SUPABASE CONFIG ── paste your values here ──────────────────
+const SUPABASE_URL  = 'https://schvgsmdyclvcohwmtwv.supabase.co';   // e.g. https://xxxx.supabase.co
+const SUPABASE_ANON = 'sb_publishable_uSiw7Qloej5cLRtG733NNA_-SiQFE5N';   // your anon/public key
+// ───────────────────────────────────────────────────────────────
+
+/* ================================================================
+   UTILITIES
+   ================================================================ */
+function timeAgo(iso) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return '刚刚';
+  if (m < 60) return m + '分钟前';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + '小时前';
+  return Math.floor(h / 24) + '天前';
+}
+
+function formatCountdown(ms) {
+  if (ms <= 0) return '已过期';
+  const totalMin = Math.floor(ms / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h > 0) return '还有 ' + h + '小时' + m + '分钟消失';
+  return '还有 ' + m + '分钟消失';
+}
+
+function haversine(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)*Math.sin(dLat/2) +
+            Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*
+            Math.sin(dLng/2)*Math.sin(dLng/2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+const AVATAR_COLORS = [
+  '#00d4ff','#7b2fff','#ff6b6b','#ffd700','#00e676',
+  '#ff9f43','#48dbfb','#ff6b81','#a29bfe','#55efc4'
+];
+function randomColor() {
+  return AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
+}
+function initials(name) {
+  if (!name) return '?';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length-1][0]).toUpperCase();
+  return name.slice(0,2).toUpperCase();
+}
+function escHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function showToast(msg, type) {
+  const container = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = 'toast' + (type ? ' ' + type : '');
+  el.textContent = msg;
+  container.appendChild(el);
+  setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, 3200);
+}
+
+function showLoading(text) {
+  const el = document.getElementById('loading-overlay');
+  if (text) el.querySelector('.loading-text').textContent = text;
+  el.classList.remove('hidden');
+}
+function hideLoading() {
+  document.getElementById('loading-overlay').classList.add('hidden');
+}
+
+/* ================================================================
+   STATE
+   ================================================================ */
+let sb = null;
+let users         = {};      // id -> { id, name, avatar_color, created_at }
+let messages      = {};      // id -> normalized message object
+let notifs        = [];      // array of notification objects
+let followingSet  = new Set(); // IDs the current user follows
+let currentUserId = localStorage.getItem('stx_currentUserId') || null;
+let currentUser   = null;
+let userGpsLocation = null;
+let postLatLng    = null;
+let postIsRealLocation = false;
+let viewingMsgId  = null;
+let replyImgData  = null;
+let postImgData   = null;
+let postIconType  = 'dot';
+let markerMap     = {};
+let map           = null;
+
+/* ================================================================
+   SUPABASE SETUP OVERLAY
+   ================================================================ */
+function showSetupOverlay() {
+  document.getElementById('setup-overlay').classList.add('visible');
+  hideLoading();
+}
+
+/* ================================================================
+   MAP INIT
+   ================================================================ */
+function initMap() {
+  map = L.map('map', {
+    center: [35, 105],
+    zoom: 5,
+    zoomControl: true,
+    attributionControl: false
+  });
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap &copy; CartoDB',
+    subdomains: 'abcd',
+    maxZoom: 19
+  }).addTo(map);
+  map.zoomControl.setPosition('bottomleft');
+  map.on('click', function(e) {
+    if (!currentUser) return;
+    openPostModal(e.latlng.lat, e.latlng.lng);
+  });
+}
+
+/* ================================================================
+   GEOLOCATION
+   ================================================================ */
+function initGeolocation() {
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(
+    function(pos) {
+      userGpsLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    },
+    function() { /* silently fail */ },
+    { timeout: 8000 }
+  );
+}
+
+/* ================================================================
+   MARKER CREATION — 4 tiers
+   ================================================================ */
+function makeMarkerIcon(msg) {
+  const remaining = new Date(msg.expires_at).getTime() - Date.now();
+  const h = remaining / 3600000;
+
+  let color, size, pulseAnim, pulseDur, labelText;
+  if (h > 18) {
+    color = '#00d4ff'; size = 20; pulseAnim = 'pulse-slow'; pulseDur = '2s';
+    labelText = Math.floor(h) + 'h';
+  } else if (h > 6) {
+    color = '#ffd700'; size = 18; pulseAnim = 'pulse-medium'; pulseDur = '1.5s';
+    labelText = Math.floor(h) + 'h';
+  } else if (h > 1) {
+    color = '#ff7f00'; size = 22; pulseAnim = 'pulse-fast'; pulseDur = '0.8s';
+    labelText = '剩' + Math.floor(h) + 'h';
+  } else {
+    color = '#ff2244'; size = 24; pulseAnim = 'pulse-dying'; pulseDur = '0.4s';
+    const m = Math.floor(remaining / 60000);
+    labelText = m > 0 ? '剩' + m + 'm' : '消失中';
+  }
+
+  const gpsBadge = msg.is_real_location
+    ? '<div style="position:absolute;top:-6px;right:-6px;width:12px;height:12px;background:#00ff88;border-radius:50%;border:1px solid #050818;display:flex;align-items:center;justify-content:center;font-size:7px;" title="真实位置">&#128205;</div>'
+    : '';
+
+  // 图标类型映射
+  const iconMap = {
+    'dot': '●',
+    'star': '⭐',
+    'heart': '❤️',
+    'smile': '😊',
+    'sun': '☀️',
+    'moon': '🌙',
+    'flower': '🌸',
+    'cloud': '☁️',
+    'coffee': '☕'
+  };
+
+  const iconType = msg.icon_type || 'dot';
+  const iconChar = iconMap[iconType] || '●';
+  const isDot = iconType === 'dot';
+
+  // 对于非圆点图标，调整大小和样式
+  const iconSize = isDot ? size : Math.max(size, 24);
+  const fontSize = isDot ? '0px' : (iconSize * 0.7) + 'px';
+
+  const html = '<div class="marker-icon" style="width:' + iconSize + 'px;height:' + iconSize + 'px;' + (isDot ? 'background:' + color + ';' : 'background:transparent;') + '--dot-color:' + color + ';--pulse-anim:' + pulseAnim + ';--pulse-dur:' + pulseDur + ';' + (isDot ? 'box-shadow:0 0 ' + Math.floor(iconSize/2) + 'px ' + color + '66;' : '') + 'border-radius:' + (isDot ? '50%' : '0') + ';display:flex;align-items:center;justify-content:center;position:relative;">'
+    + (isDot ? '' : '<div style="font-size:' + fontSize + ';line-height:1;color:' + color + ';">' + iconChar + '</div>')
+    + gpsBadge
+    + '<span class="marker-label">' + labelText + '</span>'
+    + '</div>';
+
+  return L.divIcon({
+    html: html,
+    className: '',
+    iconSize: [iconSize, iconSize],
+    iconAnchor: [Math.floor(iconSize/2), Math.floor(iconSize/2)],
+    popupAnchor: [0, -(Math.floor(iconSize/2) + 20)]
+  });
+}
+
+function addMarker(msg) {
+  if (markerMap[msg.id]) {
+    map.removeLayer(markerMap[msg.id]);
+    delete markerMap[msg.id];
+  }
+  const marker = L.marker([msg.lat, msg.lng], { icon: makeMarkerIcon(msg) });
+  marker.on('click', function(e) {
+    L.DomEvent.stopPropagation(e);
+    openMsgPanel(msg.id);
+  });
+  marker.addTo(map);
+  markerMap[msg.id] = marker;
+}
+
+function updateAllMarkers() {
+  Object.values(messages).forEach(function(msg) {
+    if (markerMap[msg.id]) {
+      markerMap[msg.id].setIcon(makeMarkerIcon(msg));
+    }
+  });
+}
+
+function removeMarker(msgId) {
+  if (markerMap[msgId]) {
+    map.removeLayer(markerMap[msgId]);
+    delete markerMap[msgId];
+  }
+}
+
+/* ================================================================
+   DATA LOADING
+   ================================================================ */
+async function loadUsers() {
+  const { data, error } = await sb.from('stx_users').select('*');
+  if (error) { showToast('加载用户失败: ' + error.message, 'error'); return; }
+  users = {};
+  (data || []).forEach(function(u) { users[u.id] = u; });
+}
+
+async function loadMessages() {
+  // Delete expired first
+  try {
+    await sb.from('stx_messages').delete().lt('expires_at', new Date().toISOString());
+  } catch(e) { /* ignore */ }
+
+  const { data, error } = await sb.from('stx_messages').select('*, stx_replies(*), stx_likes(*)');
+  if (error) { showToast('加载消息失败: ' + error.message, 'error'); return; }
+  messages = {};
+  (data || []).forEach(function(row) {
+    messages[row.id] = normalizeMessage(row);
+  });
+}
+
+function normalizeMessage(row) {
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    lat: row.lat,
+    lng: row.lng,
+    text: row.text,
+    image_data: row.image_data || null,
+    icon_type: row.icon_type || 'dot',
+    is_real_location: !!row.is_real_location,
+    created_at: row.created_at,
+    last_activity_at: row.last_activity_at,
+    expires_at: row.expires_at,
+    replies: (row.stx_replies || []).slice().sort(function(a,b){ return new Date(a.created_at).getTime() - new Date(b.created_at).getTime(); }),
+    likes: (row.stx_likes || [])
+  };
+}
+
+async function loadFollows() {
+  if (!currentUserId) return;
+  const { data, error } = await sb.from('stx_follows').select('*').eq('follower_id', currentUserId);
+  if (error) return;
+  followingSet = new Set((data || []).map(function(f) { return f.following_id; }));
+}
+
+async function loadNotifications() {
+  if (!currentUserId) return;
+  const { data, error } = await sb.from('stx_notifications').select('*')
+    .eq('for_user_id', currentUserId)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (error) return;
+  notifs = data || [];
+  updateBadge();
+}
+
+/* ================================================================
+   USER CREATION
+   ================================================================ */
+async function createUser(name) {
+  const color = randomColor();
+  const { data, error } = await sb.from('stx_users').insert({
+    name: name,
+    avatar_color: color
+  }).select().single();
+  if (error) { showToast('创建用户失败: ' + error.message, 'error'); return null; }
+  users[data.id] = data;
+  return data;
+}
+
+/* ================================================================
+   LOGIN
+   ================================================================ */
+function loginUser(user) {
+  currentUserId = user.id;
+  currentUser = user;
+  localStorage.setItem('stx_currentUserId', currentUserId);
+  updateHeaderUI();
+}
+
+function updateHeaderUI() {
+  if (!currentUser) return;
+  const av = document.getElementById('header-avatar');
+  av.textContent = initials(currentUser.name);
+  av.style.background = currentUser.avatar_color || '#00d4ff';
+  document.getElementById('header-name').textContent = currentUser.name;
+}
+
+function showLoginModal() {
+  document.getElementById('login-modal').classList.remove('hidden');
+}
+function hideLoginModal() {
+  document.getElementById('login-modal').classList.add('hidden');
+}
+
+document.getElementById('login-submit').addEventListener('click', async function() {
+  const name = document.getElementById('login-name').value.trim();
+  if (!name) {
+    document.getElementById('login-error').style.display = 'block';
+    return;
+  }
+  document.getElementById('login-error').style.display = 'none';
+  this.disabled = true;
+  this.textContent = '创建中...';
+  const user = await createUser(name);
+  this.disabled = false;
+  this.textContent = '进入时空';
+  if (!user) return;
+  loginUser(user);
+  hideLoginModal();
+  await loadFollows();
+  await loadNotifications();
+  subscribeRealtimeNotifs();
+  subscribePresence();
+});
+
+document.getElementById('login-name').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') document.getElementById('login-submit').click();
+});
+
+/* ================================================================
+   POST MESSAGE MODAL
+   ================================================================ */
+function openPostModal(lat, lng) {
+  postLatLng = { lat: lat, lng: lng };
+  postImgData = null;
+  postIconType = 'dot';
+  postIsRealLocation = false;
+  document.getElementById('post-text').value = '';
+  document.getElementById('post-error').style.display = 'none';
+  document.getElementById('post-img-error').style.display = 'none';
+  document.getElementById('post-img-preview-container').style.display = 'none';
+  document.getElementById('post-img-input').value = '';
+  document.getElementById('post-coords').textContent = '坐标: ' + lat.toFixed(5) + '\u00b0N, ' + lng.toFixed(5) + '\u00b0E';
+  document.getElementById('gps-status').textContent = '';
+  var gpsBtn = document.getElementById('use-gps-btn');
+  gpsBtn.style.background = '';
+  gpsBtn.style.color = '';
+
+  // 重置图标选择器
+  const iconOptions = document.querySelectorAll('.icon-option');
+  iconOptions.forEach(btn => {
+    const icon = btn.getAttribute('data-icon');
+    if (icon === 'dot') {
+      btn.classList.add('active');
+      btn.style.border = '2px solid var(--cyan)';
+      btn.style.background = 'rgba(0,212,255,0.1)';
+    } else {
+      btn.classList.remove('active');
+      btn.style.border = '1px solid var(--border)';
+      btn.style.background = 'rgba(10,20,50,0.5)';
+    }
+  });
+
+  document.getElementById('post-modal').classList.remove('hidden');
+  setTimeout(function() { document.getElementById('post-text').focus(); }, 100);
+}
+
+function closePostModal() {
+  document.getElementById('post-modal').classList.add('hidden');
+  postLatLng = null;
+  postImgData = null;
+  postIconType = 'dot';
+  postIsRealLocation = false;
+}
+
+document.getElementById('post-cancel').addEventListener('click', closePostModal);
+
+// 图标选择器事件
+document.querySelectorAll('.icon-option').forEach(btn => {
+  btn.addEventListener('click', function() {
+    // 移除所有active状态
+    document.querySelectorAll('.icon-option').forEach(b => {
+      b.classList.remove('active');
+      b.style.border = '1px solid var(--border)';
+      b.style.background = 'rgba(10,20,50,0.5)';
+    });
+    // 设置当前选中状态
+    this.classList.add('active');
+    this.style.border = '2px solid var(--cyan)';
+    this.style.background = 'rgba(0,212,255,0.1)';
+    // 更新选择的图标类型
+    postIconType = this.getAttribute('data-icon');
+  });
+});
+
+document.getElementById('use-gps-btn').addEventListener('click', function() {
+  if (!navigator.geolocation) {
+    document.getElementById('gps-status').textContent = '浏览器不支持定位';
+    return;
+  }
+  document.getElementById('gps-status').textContent = '定位中...';
+  navigator.geolocation.getCurrentPosition(
+    function(pos) {
+      postLatLng = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      postIsRealLocation = true;
+      document.getElementById('gps-status').textContent = '\u2713 ' + pos.coords.latitude.toFixed(4) + ', ' + pos.coords.longitude.toFixed(4);
+      document.getElementById('post-coords').textContent = '坐标: ' + pos.coords.latitude.toFixed(5) + '\u00b0N, ' + pos.coords.longitude.toFixed(5) + '\u00b0E';
+      var btn = document.getElementById('use-gps-btn');
+      btn.style.background = 'var(--cyan)';
+      btn.style.color = '#000';
+    },
+    function() {
+      document.getElementById('gps-status').textContent = '定位失败，使用点击位置';
+      postIsRealLocation = false;
+    },
+    { enableHighAccuracy: true, timeout: 8000 }
+  );
+});
+
+document.getElementById('post-img-input').addEventListener('change', function() {
+  const file = this.files[0];
+  if (!file) return;
+  if (file.size > 500*1024) {
+    const errEl = document.getElementById('post-img-error');
+    errEl.textContent = '图片过大（超过500KB），请压缩后上传';
+    errEl.style.display = 'block';
+    this.value = '';
+    return;
+  }
+  document.getElementById('post-img-error').style.display = 'none';
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    postImgData = e.target.result;
+    document.getElementById('post-img-preview').src = postImgData;
+    document.getElementById('post-img-preview-container').style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+});
+
+document.getElementById('post-img-remove').addEventListener('click', function() {
+  postImgData = null;
+  document.getElementById('post-img-input').value = '';
+  document.getElementById('post-img-preview-container').style.display = 'none';
+});
+
+document.getElementById('post-submit').addEventListener('click', async function() {
+  const text = document.getElementById('post-text').value.trim();
+  if (!text) {
+    document.getElementById('post-error').style.display = 'block';
+    return;
+  }
+  document.getElementById('post-error').style.display = 'none';
+  if (!postLatLng) return;
+
+  this.disabled = true;
+  this.textContent = '发布中...';
+
+  const expiresAt = new Date(Date.now() + 24*3600*1000).toISOString();
+  const { data, error } = await sb.from('stx_messages').insert({
+    user_id: currentUserId,
+    lat: postLatLng.lat,
+    lng: postLatLng.lng,
+    text: text,
+    image_data: postImgData || null,
+    icon_type: postIconType,
+    is_real_location: postIsRealLocation,
+    expires_at: expiresAt,
+    last_activity_at: new Date().toISOString()
+  }).select().single();
+
+  this.disabled = false;
+  this.textContent = '发布';
+
+  if (error) {
+    showToast('发布失败: ' + error.message, 'error');
+    return;
+  }
+
+  const msg = { ...data, replies: [], likes: [], stx_replies: [], stx_likes: [] };
+  const normalized = normalizeMessage(msg);
+  messages[normalized.id] = normalized;
+  addMarker(normalized);
+
+  await generatePostNotifications(normalized);
+
+  closePostModal();
+  openMsgPanel(normalized.id);
+  map.setView([normalized.lat, normalized.lng], Math.max(map.getZoom(), 13));
+});
+
+async function generatePostNotifications(msg) {
+  // Notify followers of the poster
+  for (const uid in users) {
+    if (uid === msg.user_id) continue;
+    const { data: fol } = await sb.from('stx_follows').select('id').eq('follower_id', uid).eq('following_id', msg.user_id).maybeSingle();
+    if (fol) {
+      await addNotification({
+        type: 'followed_post',
+        for_user_id: uid,
+        message_id: msg.id,
+        from_user_id: msg.user_id,
+        text: (users[msg.user_id] ? users[msg.user_id].name : '某用户') + ' 发布了新信息'
+      });
+    }
+  }
+  // Nearby notification for current user
+  if (userGpsLocation && msg.user_id !== currentUserId) {
+    const dist = haversine(userGpsLocation.lat, userGpsLocation.lng, msg.lat, msg.lng);
+    if (dist <= 5) {
+      await addNotification({
+        type: 'nearby',
+        for_user_id: currentUserId,
+        message_id: msg.id,
+        from_user_id: msg.user_id,
+        text: '附近有新信息（距你约 ' + dist.toFixed(1) + 'km）'
+      });
+    }
+  }
+}
+
+/* ================================================================
+   MESSAGE DETAIL PANEL
+   ================================================================ */
+function openMsgPanel(msgId) {
+  const msg = messages[msgId];
+  if (!msg) return;
+  viewingMsgId = msgId;
+  renderMsgPanel(msg);
+  document.getElementById('msg-panel').classList.add('open');
+}
+
+function closeMsgPanel() {
+  viewingMsgId = null;
+  document.getElementById('msg-panel').classList.remove('open');
+}
+
+document.getElementById('msg-panel-close').addEventListener('click', closeMsgPanel);
+
+function renderMsgPanel(msg) {
+  const author = users[msg.user_id] || { name: '未知用户', avatar_color: '#888', id: msg.user_id };
+  const isOwn = msg.user_id === currentUserId;
+  const isLiked = msg.likes.some(function(l) { return l.user_id === currentUserId; });
+  const isFollowing = followingSet.has(msg.user_id);
+  const remaining = new Date(msg.expires_at).getTime() - Date.now();
+  const isUrgent = remaining < 6*3600*1000;
+
+  let repliesHtml = '';
+  if (msg.replies && msg.replies.length > 0) {
+    repliesHtml = '<div class="replies-title">回复 (' + msg.replies.length + ')</div>';
+    msg.replies.forEach(function(r) {
+      const rAuthor = users[r.user_id] || { name: '未知用户', avatar_color: '#888' };
+      repliesHtml += '<div class="reply-item">'
+        + '<div class="avatar-circle" style="background:' + (rAuthor.avatar_color || '#888') + ';width:28px;height:28px;font-size:11px;flex-shrink:0">' + initials(rAuthor.name) + '</div>'
+        + '<div class="reply-content">'
+        + '<div class="reply-author">' + escHtml(rAuthor.name) + '<span class="reply-time">' + timeAgo(r.created_at) + '</span></div>'
+        + '<div class="reply-text">' + escHtml(r.text) + '</div>'
+        + (r.image_data ? '<img class="reply-image" src="' + escHtml(r.image_data) + '" alt="reply image">' : '')
+        + '</div></div>';
+    });
+  } else {
+    repliesHtml = '<div style="color:var(--text-muted);font-size:12px;text-align:center;padding:12px 0">暂无回复，来第一个回复吧</div>';
+  }
+
+  const gpsBadgeHtml = msg.is_real_location ? '<span class="gps-badge-inline">&#128205; 真实位置</span>' : '';
+
+  const html = '<div class="msg-author-row">'
+    + '<div class="avatar-circle" style="background:' + (author.avatar_color || '#888') + '">' + initials(author.name) + '</div>'
+    + '<div class="msg-author-info">'
+    + '<div class="msg-author-name">' + escHtml(author.name) + '</div>'
+    + '<div class="msg-author-time">' + timeAgo(msg.created_at) + '</div>'
+    + '</div></div>'
+    + '<div class="msg-coords">&#9670; ' + Number(msg.lat).toFixed(5) + '\u00b0N &nbsp; ' + Number(msg.lng).toFixed(5) + '\u00b0E' + gpsBadgeHtml + '</div>'
+    + '<div class="msg-text">' + escHtml(msg.text) + '</div>'
+    + (msg.image_data ? '<img class="msg-image" src="' + escHtml(msg.image_data) + '" alt="message image">' : '')
+    + '<div class="msg-expiry' + (isUrgent ? ' urgent' : '') + '">' + (isUrgent ? '&#9888; ' : ' ') + formatCountdown(remaining) + '</div>'
+    + '<div class="msg-actions">'
+    + '<button class="like-btn' + (isLiked ? ' liked' : '') + '" id="like-btn" data-id="' + msg.id + '">'
+    + '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + (isLiked ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>'
+    + '<span class="like-count">' + (msg.likes ? msg.likes.length : 0) + '</span>'
+    + '</button>'
+    + (!isOwn
+        ? '<button class="follow-btn' + (isFollowing ? ' following' : '') + '" id="follow-btn" data-uid="' + msg.user_id + '">' + (isFollowing ? '&#10003; 已关注' : '+ 关注') + '</button>'
+        : '<span style="font-size:12px;color:var(--text-muted)">我的信息</span>')
+    + '</div>'
+    + '<div id="replies-container">' + repliesHtml + '</div>';
+
+  document.getElementById('msg-panel-body').innerHTML = html;
+
+  const likeBtn = document.getElementById('like-btn');
+  if (likeBtn) likeBtn.addEventListener('click', function() { toggleLike(msg.id); });
+  const followBtn = document.getElementById('follow-btn');
+  if (followBtn) followBtn.addEventListener('click', function() { toggleFollow(msg.user_id); });
+}
+
+/* ================================================================
+   LIKE
+   ================================================================ */
+async function toggleLike(msgId) {
+  const msg = messages[msgId];
+  if (!msg) return;
+  const existingLike = msg.likes.find(function(l) { return l.user_id === currentUserId; });
+
+  if (!existingLike) {
+    const { data, error } = await sb.from('stx_likes').insert({
+      message_id: msgId,
+      user_id: currentUserId
+    }).select().single();
+    if (error) { showToast('操作失败', 'error'); return; }
+    msg.likes.push(data);
+    if (msg.user_id !== currentUserId) {
+      await addNotification({
+        type: 'like',
+        for_user_id: msg.user_id,
+        message_id: msg.id,
+        from_user_id: currentUserId,
+        text: (currentUser ? currentUser.name : '某用户') + ' 点赞了你的信息'
+      });
+    }
+  } else {
+    await sb.from('stx_likes').delete().eq('message_id', msgId).eq('user_id', currentUserId);
+    msg.likes = msg.likes.filter(function(l) { return l.user_id !== currentUserId; });
+  }
+  renderMsgPanel(msg);
+}
+
+/* ================================================================
+   FOLLOW
+   ================================================================ */
+async function toggleFollow(targetUserId) {
+  if (!currentUser) return;
+  if (followingSet.has(targetUserId)) {
+    await sb.from('stx_follows').delete().eq('follower_id', currentUserId).eq('following_id', targetUserId);
+    followingSet.delete(targetUserId);
+  } else {
+    await sb.from('stx_follows').insert({ follower_id: currentUserId, following_id: targetUserId });
+    followingSet.add(targetUserId);
+  }
+  if (viewingMsgId && messages[viewingMsgId]) {
+    renderMsgPanel(messages[viewingMsgId]);
+  }
+}
+
+/* ================================================================
+   REPLY
+   ================================================================ */
+document.getElementById('reply-img-input').addEventListener('change', function() {
+  const file = this.files[0];
+  if (!file) return;
+  if (file.size > 500*1024) {
+    showToast('图片过大（超过500KB），请压缩后上传', 'error');
+    this.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    replyImgData = e.target.result;
+    document.getElementById('reply-img-preview').textContent = file.name;
+  };
+  reader.readAsDataURL(file);
+});
+
+document.getElementById('send-reply-btn').addEventListener('click', async function() {
+  if (!viewingMsgId) return;
+  const text = document.getElementById('reply-text').value.trim();
+  if (!text) return;
+  const msg = messages[viewingMsgId];
+  if (!msg) return;
+
+  this.disabled = true;
+  this.textContent = '发送中...';
+
+  const newExpiresAt = new Date(Date.now() + 24*3600*1000).toISOString();
+  const nowIso = new Date().toISOString();
+
+  const { data: replyData, error: replyError } = await sb.from('stx_replies').insert({
+    message_id: viewingMsgId,
+    user_id: currentUserId,
+    text: text,
+    image_data: replyImgData || null
+  }).select().single();
+
+  if (replyError) {
+    showToast('回复失败: ' + replyError.message, 'error');
+    this.disabled = false;
+    this.textContent = '发送';
+    return;
+  }
+
+  await sb.from('stx_messages').update({
+    last_activity_at: nowIso,
+    expires_at: newExpiresAt
+  }).eq('id', viewingMsgId);
+
+  msg.replies.push(replyData);
+  msg.last_activity_at = nowIso;
+  msg.expires_at = newExpiresAt;
+
+  if (markerMap[msg.id]) {
+    markerMap[msg.id].setIcon(makeMarkerIcon(msg));
+  }
+
+  if (msg.user_id !== currentUserId) {
+    await addNotification({
+      type: 'reply',
+      for_user_id: msg.user_id,
+      message_id: msg.id,
+      from_user_id: currentUserId,
+      text: (currentUser ? currentUser.name : '某用户') + ' 回复了你的信息'
+    });
+  }
+
+  document.getElementById('reply-text').value = '';
+  replyImgData = null;
+  document.getElementById('reply-img-input').value = '';
+  document.getElementById('reply-img-preview').textContent = '';
+
+  this.disabled = false;
+  this.textContent = '发送';
+
+  renderMsgPanel(msg);
+  setTimeout(function() {
+    const body = document.getElementById('msg-panel-body');
+    body.scrollTop = body.scrollHeight;
+  }, 50);
+});
+
+/* ================================================================
+   NOTIFICATIONS
+   ================================================================ */
+async function addNotification(n) {
+  const { error } = await sb.from('stx_notifications').insert({
+    for_user_id: n.for_user_id,
+    type: n.type,
+    message_id: n.message_id || null,
+    from_user_id: n.from_user_id || null,
+    text: n.text,
+    read: false
+  });
+  if (error) { /* ignore notification errors silently */ }
+}
+
+function getUnreadCount() {
+  return notifs.filter(function(n) { return !n.read; }).length;
+}
+
+function updateBadge() {
+  const count = getUnreadCount();
+  const badge = document.getElementById('bell-badge');
+  if (count > 0) {
+    badge.textContent = count > 99 ? '99+' : String(count);
+    badge.style.display = 'flex';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function openNotifPanel() {
+  renderNotifPanel();
+  document.getElementById('notif-panel').classList.add('open');
+}
+function closeNotifPanel() {
+  document.getElementById('notif-panel').classList.remove('open');
+}
+
+const NOTIF_ICONS = {
+  nearby: '&#9670;',
+  followed_post: '&#9733;',
+  reply: '&#9993;',
+  like: '&#9825;'
+};
+
+function renderNotifPanel() {
+  const body = document.getElementById('notif-panel-body');
+  if (notifs.length === 0) {
+    body.innerHTML = '<div class="no-notifs">暂无通知</div>';
+    return;
+  }
+  body.innerHTML = notifs.map(function(n) {
+    const hasMsg = n.message_id && messages[n.message_id];
+    return '<div class="notif-item ' + (n.read ? '' : 'unread') + '" data-id="' + n.id + '">'
+      + '<div class="notif-icon ' + (n.type || '') + '">' + (NOTIF_ICONS[n.type] || '?') + '</div>'
+      + '<div class="notif-content">'
+      + '<div class="notif-text">' + escHtml(n.text) + '</div>'
+      + '<div class="notif-time">' + timeAgo(n.created_at) + '</div>'
+      + '</div>'
+      + (hasMsg ? '<button class="notif-jump" data-msgid="' + n.message_id + '">查看</button>' : '')
+      + '</div>';
+  }).join('');
+
+  body.querySelectorAll('.notif-jump').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      const msgId = this.dataset.msgid;
+      closeNotifPanel();
+      if (messages[msgId]) {
+        map.setView([messages[msgId].lat, messages[msgId].lng], 14);
+        openMsgPanel(msgId);
+      }
+    });
+  });
+}
+
+document.getElementById('bell-btn').addEventListener('click', function() {
+  if (document.getElementById('notif-panel').classList.contains('open')) {
+    closeNotifPanel();
+  } else {
+    openNotifPanel();
+  }
+});
+document.getElementById('notif-panel-close').addEventListener('click', closeNotifPanel);
+
+document.getElementById('mark-read-btn').addEventListener('click', async function() {
+  if (!currentUserId) return;
+  await sb.from('stx_notifications').update({ read: true }).eq('for_user_id', currentUserId);
+  notifs.forEach(function(n) { n.read = true; });
+  updateBadge();
+  renderNotifPanel();
+});
+
+/* ================================================================
+   USER PROFILE MODAL
+   ================================================================ */
+document.getElementById('avatar-btn').addEventListener('click', openProfileModal);
+
+function openProfileModal() {
+  if (!currentUser) return;
+  const myMessages = Object.values(messages).filter(function(m) { return m.user_id === currentUserId; });
+  const totalLikes = myMessages.reduce(function(a, m) { return a + (m.likes ? m.likes.length : 0); }, 0);
+  document.getElementById('profile-content').innerHTML =
+    '<div class="profile-header">'
+    + '<div class="profile-avatar" style="background:' + (currentUser.avatar_color || '#00d4ff') + '">' + initials(currentUser.name) + '</div>'
+    + '<div class="profile-info">'
+    + '<div class="profile-name">' + escHtml(currentUser.name) + '</div>'
+    + '<div class="profile-since">加入于 ' + new Date(currentUser.created_at).toLocaleDateString('zh-CN') + '</div>'
+    + '</div></div>'
+    + '<div class="profile-stats">'
+    + '<div class="profile-stat"><div class="profile-stat-num">' + myMessages.length + '</div><div class="profile-stat-label">信息</div></div>'
+    + '<div class="profile-stat"><div class="profile-stat-num">' + followingSet.size + '</div><div class="profile-stat-label">关注</div></div>'
+    + '<div class="profile-stat"><div class="profile-stat-num">' + totalLikes + '</div><div class="profile-stat-label">获赞</div></div>'
+    + '</div>';
+  document.getElementById('profile-modal').classList.remove('hidden');
+}
+
+document.getElementById('profile-close').addEventListener('click', function() {
+  document.getElementById('profile-modal').classList.add('hidden');
+});
+document.getElementById('open-switch-btn').addEventListener('click', function() {
+  document.getElementById('profile-modal').classList.add('hidden');
+  openSwitchModal();
+});
+
+/* ================================================================
+   SWITCH USER MODAL
+   ================================================================ */
+function openSwitchModal() {
+  document.getElementById('switch-new-name').value = '';
+  document.getElementById('switch-error').style.display = 'none';
+  renderSwitchUserList();
+  document.getElementById('switch-modal').classList.remove('hidden');
+}
+
+function renderSwitchUserList() {
+  const list = document.getElementById('switch-user-list');
+  const allUsers = Object.values(users);
+  if (allUsers.length === 0) { list.innerHTML = ''; return; }
+  list.innerHTML = allUsers.map(function(u) {
+    return '<button class="switch-user-btn" data-uid="' + u.id + '" style="display:flex;align-items:center;gap:10px;text-align:left">'
+      + '<div class="avatar-circle" style="background:' + (u.avatar_color || '#888') + ';width:28px;height:28px;font-size:11px;flex-shrink:0">' + initials(u.name) + '</div>'
+      + '<span style="font-size:13px;color:var(--text-primary)">' + escHtml(u.name) + '</span>'
+      + (u.id === currentUserId ? '<span style="font-size:11px;color:var(--cyan);margin-left:auto">当前</span>' : '')
+      + '</button>';
+  }).join('');
+  list.querySelectorAll('button[data-uid]').forEach(function(btn) {
+    btn.addEventListener('click', async function() {
+      const uid = this.dataset.uid;
+      const user = users[uid];
+      if (!user) return;
+      loginUser(user);
+      document.getElementById('switch-modal').classList.add('hidden');
+      await loadFollows();
+      await loadNotifications();
+      subscribeRealtimeNotifs();
+    });
+  });
+}
+
+document.getElementById('switch-cancel').addEventListener('click', function() {
+  document.getElementById('switch-modal').classList.add('hidden');
+});
+
+document.getElementById('switch-create').addEventListener('click', async function() {
+  const name = document.getElementById('switch-new-name').value.trim();
+  if (!name) {
+    const err = document.getElementById('switch-error');
+    err.textContent = '请输入用户名';
+    err.style.display = 'block';
+    return;
+  }
+  this.disabled = true;
+  const user = await createUser(name);
+  this.disabled = false;
+  if (!user) return;
+  loginUser(user);
+  document.getElementById('switch-modal').classList.add('hidden');
+  await loadFollows();
+  await loadNotifications();
+  subscribeRealtimeNotifs();
+  subscribePresence();
+});
+
+/* ================================================================
+   INFO / RULES MODAL
+   ================================================================ */
+function showInfoModal() {
+  document.getElementById('info-modal').classList.remove('hidden');
+}
+function hideInfoModal() {
+  document.getElementById('info-modal').classList.add('hidden');
+}
+
+document.getElementById('info-btn').addEventListener('click', showInfoModal);
+document.getElementById('info-close').addEventListener('click', hideInfoModal);
+document.getElementById('login-show-info').addEventListener('click', function() {
+  hideLoginModal();
+  showInfoModal();
+});
+
+/* ================================================================
+   GPS / LOCATE
+   ================================================================ */
+document.getElementById('locate-btn').addEventListener('click', gotoMyLocation);
+document.getElementById('fab-locate').addEventListener('click', gotoMyLocation);
+
+function gotoMyLocation() {
+  if (userGpsLocation) {
+    map.setView([userGpsLocation.lat, userGpsLocation.lng], 14, { animate: true });
+  } else if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(function(p) {
+      userGpsLocation = { lat: p.coords.latitude, lng: p.coords.longitude };
+      map.setView([userGpsLocation.lat, userGpsLocation.lng], 14, { animate: true });
+    }, function() {
+      showToast('无法获取位置，请检查浏览器权限', 'error');
+    });
+  } else {
+    showToast('浏览器不支持地理定位', 'error');
+  }
+}
+
+/* ================================================================
+   EXPIRY / PURGE
+   ================================================================ */
+function purgeExpiredLocal() {
+  const now = Date.now();
+  Object.keys(messages).forEach(function(id) {
+    if (new Date(messages[id].expires_at).getTime() < now) {
+      removeMarker(id);
+      delete messages[id];
+      if (viewingMsgId === id) closeMsgPanel();
+    }
+  });
+}
+
+/* ================================================================
+   REAL-TIME SUBSCRIPTIONS
+   ================================================================ */
+let realtimeMsgChannel = null;
+let realtimeNotifChannel = null;
+let presenceChannel = null;
+
+function subscribeRealtime() {
+  if (realtimeMsgChannel) { sb.removeChannel(realtimeMsgChannel); }
+  realtimeMsgChannel = sb.channel('realtime-messages')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'stx_messages' }, handleMessageChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'stx_replies' }, handleReplyChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'stx_likes' }, handleLikeChange)
+    .subscribe();
+}
+
+function subscribeRealtimeNotifs() {
+  if (!currentUserId) return;
+  if (realtimeNotifChannel) { sb.removeChannel(realtimeNotifChannel); }
+  realtimeNotifChannel = sb.channel('realtime-notifs-' + currentUserId)
+    .on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'stx_notifications',
+      filter: 'for_user_id=eq.' + currentUserId
+    }, handleNewNotif)
+    .subscribe();
+}
+
+function subscribePresence() {
+  if (!currentUserId || !currentUser) return;
+  if (presenceChannel) { sb.removeChannel(presenceChannel); }
+  presenceChannel = sb.channel('presence-online', {
+    config: { presence: { key: currentUserId } }
+  });
+  presenceChannel
+    .on('presence', { event: 'sync' }, function() {
+      const state = presenceChannel.presenceState();
+      const count = Object.keys(state).length;
+      const el = document.getElementById('online-count');
+      if (el) el.textContent = count;
+    })
+    .subscribe(async function(status) {
+      if (status === 'SUBSCRIBED') {
+        await presenceChannel.track({ user_id: currentUserId, name: currentUser.name });
+      }
+    });
+}
+
+async function handleMessageChange(payload) {
+  const eventType = payload.eventType;
+  if (eventType === 'INSERT') {
+    const row = payload.new;
+    if (messages[row.id]) return; // already have it
+    // Fetch full with replies/likes
+    const { data } = await sb.from('stx_messages').select('*, stx_replies(*), stx_likes(*)').eq('id', row.id).single();
+    if (data) {
+      const msg = normalizeMessage(data);
+      messages[msg.id] = msg;
+      addMarker(msg);
+      if (msg.user_id !== currentUserId) {
+        showToast('新消息！', 'success');
+      }
+    }
+  } else if (eventType === 'UPDATE') {
+    const row = payload.new;
+    if (messages[row.id]) {
+      messages[row.id].expires_at = row.expires_at;
+      messages[row.id].last_activity_at = row.last_activity_at;
+      if (markerMap[row.id]) {
+        markerMap[row.id].setIcon(makeMarkerIcon(messages[row.id]));
+      }
+    }
+  } else if (eventType === 'DELETE') {
+    const id = payload.old.id;
+    removeMarker(id);
+    delete messages[id];
+    if (viewingMsgId === id) closeMsgPanel();
+  }
+}
+
+async function handleReplyChange(payload) {
+  if (payload.eventType !== 'INSERT') return;
+  const row = payload.new;
+  const msgId = row.message_id;
+  if (!messages[msgId]) return;
+  // Check if we already have this reply
+  const exists = messages[msgId].replies.some(function(r) { return r.id === row.id; });
+  if (!exists) {
+    messages[msgId].replies.push(row);
+    if (viewingMsgId === msgId) {
+      renderMsgPanel(messages[msgId]);
+    }
+  }
+}
+
+async function handleLikeChange(payload) {
+  const row = payload.eventType === 'DELETE' ? payload.old : payload.new;
+  const msgId = row.message_id;
+  if (!messages[msgId]) return;
+  if (payload.eventType === 'INSERT') {
+    const exists = messages[msgId].likes.some(function(l) { return l.id === row.id; });
+    if (!exists) messages[msgId].likes.push(row);
+  } else if (payload.eventType === 'DELETE') {
+    messages[msgId].likes = messages[msgId].likes.filter(function(l) { return l.id !== row.id; });
+  }
+  if (viewingMsgId === msgId) {
+    renderMsgPanel(messages[msgId]);
+  }
+}
+
+async function handleNewNotif(payload) {
+  const notif = payload.new;
+  notifs.unshift(notif);
+  updateBadge();
+  showToast('新通知: ' + (notif.text || ''), 'success');
+}
+
+/* ================================================================
+   MARKER REFRESH INTERVAL
+   ================================================================ */
+setInterval(function() {
+  purgeExpiredLocal();
+  updateAllMarkers();
+  if (viewingMsgId && messages[viewingMsgId]) {
+    const expEl = document.querySelector('.msg-expiry');
+    if (expEl) {
+      const msg = messages[viewingMsgId];
+      const remaining = new Date(msg.expires_at).getTime() - Date.now();
+      const isUrgent = remaining < 6*3600*1000;
+      expEl.className = 'msg-expiry' + (isUrgent ? ' urgent' : '');
+      expEl.innerHTML = (isUrgent ? '&#9888; ' : ' ') + formatCountdown(remaining);
+    }
+  }
+}, 60000);
+
+/* ================================================================
+   KEYBOARD / ESC
+   ================================================================ */
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    closeMsgPanel();
+    closeNotifPanel();
+    document.getElementById('post-modal').classList.add('hidden');
+    document.getElementById('profile-modal').classList.add('hidden');
+    document.getElementById('switch-modal').classList.add('hidden');
+    document.getElementById('info-modal').classList.add('hidden');
+  }
+});
+
+/* ================================================================
+   INIT
+   ================================================================ */
+async function init() {
+  if (!SUPABASE_URL || !SUPABASE_ANON) {
+    showSetupOverlay();
+    return;
+  }
+
+  showLoading('正在连接时空...');
+
+  try {
+    sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+  } catch(e) {
+    showToast('Supabase 初始化失败: ' + e.message, 'error');
+    hideLoading();
+    return;
+  }
+
+  initMap();
+  initGeolocation();
+
+  try {
+    await loadUsers();
+    await loadMessages();
+  } catch(e) {
+    showToast('数据加载失败: ' + e.message, 'error');
+    hideLoading();
+    return;
+  }
+
+  // Add all markers
+  Object.values(messages).forEach(function(msg) { addMarker(msg); });
+
+  // Login check
+  if (currentUserId && users[currentUserId]) {
+    currentUser = users[currentUserId];
+    updateHeaderUI();
+    await loadFollows();
+    await loadNotifications();
+    subscribeRealtimeNotifs();
+    subscribePresence();
+    hideLoading();
+  } else {
+    hideLoading();
+    showLoginModal();
+  }
+
+  purgeExpiredLocal();
+  subscribeRealtime();
+}
+
+init();
+</script>
+</body>
+</html>
