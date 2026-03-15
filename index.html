@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>时空Chat - Spacetime Messages</title>
+    <meta http-equiv="refresh" content="0; url=spacetime.html">
+    <link rel="canonical" href="spacetime.html">
+    <style>
+        body {
+            background: #050818;
+            color: #e0e8ff;
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(0,212,255,0.3);
+            border-radius: 50%;
+            border-top-color: #00d4ff;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        h1 {
+            color: #00d4ff;
+            margin-bottom: 10px;
+        }
+        p {
+            color: rgba(224,232,255,0.7);
+            max-width: 500px;
+        }
+        a {
+            color: #00d4ff;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="spinner"></div>
+    <h1>时空Chat - Spacetime Messages</h1>
+    <p>正在加载时空聊天界面...</p>
+    <p>如果页面没有自动跳转，请点击 <a href="spacetime.html">spacetime.html</a></p>
+    <script>
+        // 备用重定向
+        setTimeout(function() {
+            window.location.href = 'spacetime.html';
+        }, 2000);
+    </script>
+</body>
+</html>

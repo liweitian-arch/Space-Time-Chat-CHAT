@@ -46,6 +46,8 @@ body {
   top: 0; left: 0;
   width: 100%; height: 100%;
   z-index: 1;
+  /* 增强对比度，使消息点更明显 */
+  filter: contrast(1.2) brightness(0.8) saturate(1.3);
 }
 
 /* =============================================
@@ -919,6 +921,7 @@ CREATE TABLE stx_messages (
   text TEXT NOT NULL,
   image_data TEXT,
   icon_type TEXT DEFAULT 'dot',
+  is_anonymous BOOLEAN DEFAULT FALSE,
   is_real_location BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   last_activity_at TIMESTAMPTZ DEFAULT NOW(),
@@ -1170,6 +1173,10 @@ ALTER TABLE stx_messages ADD COLUMN IF NOT EXISTS icon_type TEXT DEFAULT 'dot';<
     <label>内容 *</label>
     <textarea id="post-text" placeholder="此刻你想说什么..." style="min-height:100px"></textarea>
     <div class="error-msg" id="post-error">请输入内容</div>
+    <div style="margin-bottom:16px;display:flex;align-items:center;gap:8px;">
+      <input type="checkbox" id="post-anonymous" style="width:16px;height:16px;cursor:pointer;">
+      <label for="post-anonymous" style="font-size:13px;color:var(--text-primary);cursor:pointer;">匿名发布（不显示用户名）</label>
+    </div>
     <label>图片（可选）</label>
     <div class="img-upload-area">
       <label class="img-upload-label">
@@ -1218,7 +1225,6 @@ ALTER TABLE stx_messages ADD COLUMN IF NOT EXISTS icon_type TEXT DEFAULT 'dot';<
   <div class="modal">
     <div class="modal-title">个人资料</div>
     <div id="profile-content"></div>
-    <button class="switch-user-btn" id="open-switch-btn">切换用户</button>
     <div class="modal-actions">
       <button class="btn-secondary" id="profile-close">关闭</button>
     </div>
@@ -1376,6 +1382,74 @@ let markerMap     = {};
 let map           = null;
 
 /* ================================================================
+   COORDINATE TRANSFORM (WGS-84 ↔ GCJ-02)
+   ================================================================ */
+function transformWGS84ToGCJ02(wgsLat, wgsLng) {
+  // 更准确的 GCJ-02 转换算法
+  const PI = 3.14159265358979324;
+  const a = 6378245.0;
+  const ee = 0.00669342162296594323;
+
+  // 检查是否在国内
+  if (wgsLng < 72.004 || wgsLng > 137.8347 || wgsLat < 0.8293 || wgsLat > 55.8271) {
+    return { lat: wgsLat, lng: wgsLng };
+  }
+
+  function transformLat(x, y) {
+    let ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+    ret += (20.0 * Math.sin(6.0 * x * PI) + 20.0 * Math.sin(2.0 * x * PI)) * 2.0 / 3.0;
+    ret += (20.0 * Math.sin(y * PI) + 40.0 * Math.sin(y / 3.0 * PI)) * 2.0 / 3.0;
+    ret += (160.0 * Math.sin(y / 12.0 * PI) + 320 * Math.sin(y * PI / 30.0)) * 2.0 / 3.0;
+    return ret;
+  }
+
+  function transformLon(x, y) {
+    let ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+    ret += (20.0 * Math.sin(6.0 * x * PI) + 20.0 * Math.sin(2.0 * x * PI)) * 2.0 / 3.0;
+    ret += (20.0 * Math.sin(x * PI) + 40.0 * Math.sin(x / 3.0 * PI)) * 2.0 / 3.0;
+    ret += (150.0 * Math.sin(x / 12.0 * PI) + 300.0 * Math.sin(x / 30.0 * PI)) * 2.0 / 3.0;
+    return ret;
+  }
+
+  let dLat = transformLat(wgsLng - 105.0, wgsLat - 35.0);
+  let dLon = transformLon(wgsLng - 105.0, wgsLat - 35.0);
+
+  const radLat = wgsLat / 180.0 * PI;
+  const magic = Math.sin(radLat);
+  const sqrtMagic = Math.sqrt(1.0 - ee * magic * magic);
+
+  dLat = (dLat * 180.0) / ((a * (1.0 - ee)) / (sqrtMagic * sqrtMagic * sqrtMagic) * PI);
+  dLon = (dLon * 180.0) / (a / sqrtMagic * Math.cos(radLat) * PI);
+
+  const gcjLat = wgsLat + dLat;
+  const gcjLng = wgsLng + dLon;
+
+  return { lat: gcjLat, lng: gcjLng };
+}
+
+function transformGCJ02ToWGS84(gcjLat, gcjLng) {
+  // 通过迭代逼近将GCJ-02转换为WGS-84
+  const threshold = 1e-7; // 更高精度
+  let dLat = 0.0, dLng = 0.0;
+  let tmpLat = gcjLat, tmpLng = gcjLng;
+
+  for (let i = 0; i < 30; i++) { // 增加迭代次数
+    const wgs = transformWGS84ToGCJ02(tmpLat, tmpLng);
+    dLat = gcjLat - wgs.lat;
+    dLng = gcjLng - wgs.lng;
+
+    if (Math.abs(dLat) < threshold && Math.abs(dLng) < threshold) {
+      break;
+    }
+
+    tmpLat += dLat;
+    tmpLng += dLng;
+  }
+
+  return { lat: parseFloat(tmpLat.toFixed(9)), lng: parseFloat(tmpLng.toFixed(9)) };
+}
+
+/* ================================================================
    SUPABASE SETUP OVERLAY
    ================================================================ */
 function showSetupOverlay() {
@@ -1387,21 +1461,31 @@ function showSetupOverlay() {
    MAP INIT
    ================================================================ */
 function initMap() {
+  // 将WGS-84初始中心坐标转换为GCJ-02
+  const initialCenter = transformWGS84ToGCJ02(35, 105);
   map = L.map('map', {
-    center: [35, 105],
+    center: [initialCenter.lat, initialCenter.lng],
     zoom: 5,
     zoomControl: true,
     attributionControl: false
   });
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; OpenStreetMap &copy; CartoDB',
-    subdomains: 'abcd',
-    maxZoom: 19
+  // 使用高德地图最暗主题（夜间主题），随机选择子域名以平衡负载
+  const subdomains = ['webst01', 'webst02', 'webst03', 'webst04'];
+  const subdomain = subdomains[Math.floor(Math.random() * subdomains.length)];
+  L.tileLayer(`https://${subdomain}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}`, {
+    attribution: '&copy; 高德地图',
+    maxZoom: 19,
+    crossOrigin: 'anonymous',
+    detectRetina: false,
+    reuseTiles: true,
+    updateWhenIdle: true
   }).addTo(map);
   map.zoomControl.setPosition('bottomleft');
   map.on('click', function(e) {
     if (!currentUser) return;
-    openPostModal(e.latlng.lat, e.latlng.lng);
+    // 地图点击返回的是GCJ-02坐标，需要转换为WGS-84存储
+    const wgsCoords = transformGCJ02ToWGS84(e.latlng.lat, e.latlng.lng);
+    openPostModal(wgsCoords.lat, wgsCoords.lng);
   });
 }
 
@@ -1428,16 +1512,16 @@ function makeMarkerIcon(msg) {
 
   let color, size, pulseAnim, pulseDur, labelText;
   if (h > 18) {
-    color = '#00d4ff'; size = 20; pulseAnim = 'pulse-slow'; pulseDur = '2s';
+    color = '#00d4ff'; size = 34; pulseAnim = 'pulse-slow'; pulseDur = '2s';
     labelText = Math.floor(h) + 'h';
   } else if (h > 6) {
-    color = '#ffd700'; size = 18; pulseAnim = 'pulse-medium'; pulseDur = '1.5s';
+    color = '#ffd700'; size = 31; pulseAnim = 'pulse-medium'; pulseDur = '1.5s';
     labelText = Math.floor(h) + 'h';
   } else if (h > 1) {
-    color = '#ff7f00'; size = 22; pulseAnim = 'pulse-fast'; pulseDur = '0.8s';
+    color = '#ff7f00'; size = 37; pulseAnim = 'pulse-fast'; pulseDur = '0.8s';
     labelText = '剩' + Math.floor(h) + 'h';
   } else {
-    color = '#ff2244'; size = 24; pulseAnim = 'pulse-dying'; pulseDur = '0.4s';
+    color = '#ff2244'; size = 41; pulseAnim = 'pulse-dying'; pulseDur = '0.4s';
     const m = Math.floor(remaining / 60000);
     labelText = m > 0 ? '剩' + m + 'm' : '消失中';
   }
@@ -1467,7 +1551,7 @@ function makeMarkerIcon(msg) {
   const iconSize = isDot ? size : Math.max(size, 24);
   const fontSize = isDot ? '0px' : (iconSize * 0.7) + 'px';
 
-  const html = '<div class="marker-icon" style="width:' + iconSize + 'px;height:' + iconSize + 'px;' + (isDot ? 'background:' + color + ';' : 'background:transparent;') + '--dot-color:' + color + ';--pulse-anim:' + pulseAnim + ';--pulse-dur:' + pulseDur + ';' + (isDot ? 'box-shadow:0 0 ' + Math.floor(iconSize/2) + 'px ' + color + '66;' : '') + 'border-radius:' + (isDot ? '50%' : '0') + ';display:flex;align-items:center;justify-content:center;position:relative;">'
+  const html = '<div class="marker-icon" style="width:' + iconSize + 'px;height:' + iconSize + 'px;' + (isDot ? 'background:' + color + ';' : 'background:transparent;') + '--dot-color:' + color + ';--pulse-anim:' + pulseAnim + ';--pulse-dur:' + pulseDur + ';' + (isDot ? 'box-shadow:0 0 ' + Math.floor(iconSize * 2) + 'px ' + color + '99;' : '') + 'border-radius:' + (isDot ? '50%' : '0') + ';display:flex;align-items:center;justify-content:center;position:relative;">'
     + (isDot ? '' : '<div style="font-size:' + fontSize + ';line-height:1;color:' + color + ';">' + iconChar + '</div>')
     + gpsBadge
     + '<span class="marker-label">' + labelText + '</span>'
@@ -1487,7 +1571,9 @@ function addMarker(msg) {
     map.removeLayer(markerMap[msg.id]);
     delete markerMap[msg.id];
   }
-  const marker = L.marker([msg.lat, msg.lng], { icon: makeMarkerIcon(msg) });
+  // 将WGS-84坐标转换为GCJ-02坐标显示
+  const gcjCoords = transformWGS84ToGCJ02(msg.lat, msg.lng);
+  const marker = L.marker([gcjCoords.lat, gcjCoords.lng], { icon: makeMarkerIcon(msg) });
   marker.on('click', function(e) {
     L.DomEvent.stopPropagation(e);
     openMsgPanel(msg.id);
@@ -1679,6 +1765,7 @@ function closePostModal() {
   postImgData = null;
   postIconType = 'dot';
   postIsRealLocation = false;
+  document.getElementById('post-anonymous').checked = false;
 }
 
 document.getElementById('post-cancel').addEventListener('click', closePostModal);
@@ -1753,6 +1840,7 @@ document.getElementById('post-img-remove').addEventListener('click', function() 
 
 document.getElementById('post-submit').addEventListener('click', async function() {
   const text = document.getElementById('post-text').value.trim();
+  const isAnonymous = document.getElementById('post-anonymous').checked;
   if (!text) {
     document.getElementById('post-error').style.display = 'block';
     return;
@@ -1772,6 +1860,7 @@ document.getElementById('post-submit').addEventListener('click', async function(
     image_data: postImgData || null,
     icon_type: postIconType,
     is_real_location: postIsRealLocation,
+    is_anonymous: isAnonymous,
     expires_at: expiresAt,
     last_activity_at: new Date().toISOString()
   }).select().single();
@@ -1793,7 +1882,9 @@ document.getElementById('post-submit').addEventListener('click', async function(
 
   closePostModal();
   openMsgPanel(normalized.id);
-  map.setView([normalized.lat, normalized.lng], Math.max(map.getZoom(), 13));
+  // 将WGS-84坐标转换为GCJ-02坐标显示
+  const gcjCoords = transformWGS84ToGCJ02(normalized.lat, normalized.lng);
+  map.setView([gcjCoords.lat, gcjCoords.lng], Math.max(map.getZoom(), 13));
 });
 
 async function generatePostNotifications(msg) {
@@ -1807,7 +1898,7 @@ async function generatePostNotifications(msg) {
         for_user_id: uid,
         message_id: msg.id,
         from_user_id: msg.user_id,
-        text: (users[msg.user_id] ? users[msg.user_id].name : '某用户') + ' 发布了新信息'
+        text: (msg.is_anonymous ? '匿名用户' : (users[msg.user_id] ? users[msg.user_id].name : '某用户')) + ' 发布了新信息'
       });
     }
   }
@@ -1849,6 +1940,9 @@ function renderMsgPanel(msg) {
   const isOwn = msg.user_id === currentUserId;
   const isLiked = msg.likes.some(function(l) { return l.user_id === currentUserId; });
   const isFollowing = followingSet.has(msg.user_id);
+
+  // 匿名消息处理
+  const displayAuthor = msg.is_anonymous ? { name: '匿名', avatar_color: '#666', id: null } : author;
   const remaining = new Date(msg.expires_at).getTime() - Date.now();
   const isUrgent = remaining < 6*3600*1000;
 
@@ -1872,9 +1966,9 @@ function renderMsgPanel(msg) {
   const gpsBadgeHtml = msg.is_real_location ? '<span class="gps-badge-inline">&#128205; 真实位置</span>' : '';
 
   const html = '<div class="msg-author-row">'
-    + '<div class="avatar-circle" style="background:' + (author.avatar_color || '#888') + '">' + initials(author.name) + '</div>'
+    + '<div class="avatar-circle" style="background:' + (displayAuthor.avatar_color || '#888') + '">' + initials(displayAuthor.name) + '</div>'
     + '<div class="msg-author-info">'
-    + '<div class="msg-author-name">' + escHtml(author.name) + '</div>'
+    + '<div class="msg-author-name">' + escHtml(displayAuthor.name) + '</div>'
     + '<div class="msg-author-time">' + timeAgo(msg.created_at) + '</div>'
     + '</div></div>'
     + '<div class="msg-coords">&#9670; ' + Number(msg.lat).toFixed(5) + '\u00b0N &nbsp; ' + Number(msg.lng).toFixed(5) + '\u00b0E' + gpsBadgeHtml + '</div>'
@@ -1886,9 +1980,9 @@ function renderMsgPanel(msg) {
     + '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + (isLiked ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>'
     + '<span class="like-count">' + (msg.likes ? msg.likes.length : 0) + '</span>'
     + '</button>'
-    + (!isOwn
+    + (msg.is_anonymous ? '<span style="font-size:12px;color:var(--text-muted)">匿名消息</span>' : (!isOwn
         ? '<button class="follow-btn' + (isFollowing ? ' following' : '') + '" id="follow-btn" data-uid="' + msg.user_id + '">' + (isFollowing ? '&#10003; 已关注' : '+ 关注') + '</button>'
-        : '<span style="font-size:12px;color:var(--text-muted)">我的信息</span>')
+        : '<span style="font-size:12px;color:var(--text-muted)">我的信息</span>'))
     + '</div>'
     + '<div id="replies-container">' + repliesHtml + '</div>';
 
@@ -2101,7 +2195,9 @@ function renderNotifPanel() {
       const msgId = this.dataset.msgid;
       closeNotifPanel();
       if (messages[msgId]) {
-        map.setView([messages[msgId].lat, messages[msgId].lng], 14);
+        // 将WGS-84坐标转换为GCJ-02坐标显示
+        const gcjCoords = transformWGS84ToGCJ02(messages[msgId].lat, messages[msgId].lng);
+        map.setView([gcjCoords.lat, gcjCoords.lng], 14);
         openMsgPanel(msgId);
       }
     });
@@ -2151,10 +2247,6 @@ function openProfileModal() {
 
 document.getElementById('profile-close').addEventListener('click', function() {
   document.getElementById('profile-modal').classList.add('hidden');
-});
-document.getElementById('open-switch-btn').addEventListener('click', function() {
-  document.getElementById('profile-modal').classList.add('hidden');
-  openSwitchModal();
 });
 
 /* ================================================================
@@ -2241,11 +2333,15 @@ document.getElementById('fab-locate').addEventListener('click', gotoMyLocation);
 
 function gotoMyLocation() {
   if (userGpsLocation) {
-    map.setView([userGpsLocation.lat, userGpsLocation.lng], 14, { animate: true });
+    // 将WGS-84坐标转换为GCJ-02坐标显示
+    const gcjCoords = transformWGS84ToGCJ02(userGpsLocation.lat, userGpsLocation.lng);
+    map.setView([gcjCoords.lat, gcjCoords.lng], 14, { animate: true });
   } else if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(function(p) {
       userGpsLocation = { lat: p.coords.latitude, lng: p.coords.longitude };
-      map.setView([userGpsLocation.lat, userGpsLocation.lng], 14, { animate: true });
+      // 将WGS-84坐标转换为GCJ-02坐标显示
+      const gcjCoords = transformWGS84ToGCJ02(userGpsLocation.lat, userGpsLocation.lng);
+      map.setView([gcjCoords.lat, gcjCoords.lng], 14, { animate: true });
     }, function() {
       showToast('无法获取位置，请检查浏览器权限', 'error');
     });
