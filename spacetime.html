@@ -880,6 +880,104 @@ body {
   .avatar-name { display: none; }
   .modal { padding: 18px; }
 }
+
+/* =============================================
+   ONLINE USERS LIST
+   ============================================= */
+.online-users-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.online-user-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(0,212,255,0.03);
+  transition: border-color 0.2s, background 0.2s;
+}
+.online-user-item:hover {
+  border-color: var(--border-hover);
+  background: rgba(0,212,255,0.06);
+}
+.online-user-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.online-user-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.online-user-info {
+  flex: 1;
+  min-width: 0;
+}
+.online-user-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+.online-user-bio {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.online-user-actions {
+  flex-shrink: 0;
+}
+.online-user-follow-btn {
+  padding: 5px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.online-user-follow-btn:hover {
+  border-color: var(--cyan);
+  color: var(--cyan);
+  background: rgba(0,212,255,0.08);
+}
+.online-user-follow-btn.following {
+  border-color: var(--purple);
+  color: var(--purple);
+  background: rgba(123,47,255,0.12);
+}
+
+/* =============================================
+   AVATAR UPLOAD & PREVIEW
+   ============================================= */
+.avatar-preview-container .avatar-circle {
+  border: 2px solid var(--border);
+}
+.avatar-upload-section .img-upload-area {
+  margin-bottom: 8px;
+}
+.avatar-preview-img-loading {
+  opacity: 0.5;
+}
 </style>
 </head>
 <body>
@@ -1283,6 +1381,70 @@ ALTER TABLE stx_messages ADD COLUMN IF NOT EXISTS icon_type TEXT DEFAULT 'dot';<
 </div>
 
 <!-- ============================================================
+     ONLINE USERS MODAL
+     ============================================================ -->
+<div class="modal-overlay hidden" id="online-users-modal">
+  <div class="modal" style="max-width: 480px;">
+    <div class="modal-title">在线用户 (<span id="online-users-count">0</span>)</div>
+    <div class="modal-subtitle" style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">点击用户关注或取消关注</div>
+    <div id="online-users-list" class="online-users-list" style="max-height: 400px; overflow-y: auto; margin-bottom: 16px;">
+      <!-- 用户列表将通过JavaScript动态填充 -->
+      <div class="no-online-users" style="text-align:center;color:var(--text-muted);padding:40px 0;">暂无在线用户</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="online-users-close">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     PROFILE EDIT MODAL
+     ============================================================ -->
+<div class="modal-overlay hidden" id="profile-edit-modal">
+  <div class="modal" style="max-width: 460px;">
+    <div class="modal-title">编辑个人资料</div>
+
+    <div style="margin-bottom: 24px;">
+      <label>头像</label>
+      <div class="avatar-upload-section">
+        <div class="avatar-preview-container" style="display: flex; align-items: center; gap: 16px; margin-bottom: 12px;">
+          <div id="avatar-preview" class="avatar-circle" style="width: 60px; height: 60px; font-size: 20px; flex-shrink: 0;"></div>
+          <div style="flex: 1;">
+            <div class="img-upload-area" id="avatar-upload-area">
+              <div class="img-upload-label">点击或拖拽上传图片 <span>（JPEG/PNG/WebP，小于1MB）</span></div>
+              <input type="file" id="avatar-upload-input" accept=".jpg,.jpeg,.png,.webp" style="display:none;">
+            </div>
+            <div id="avatar-upload-preview" class="img-preview-container">
+              <img id="avatar-preview-img" src="" alt="预览">
+              <button class="img-remove-btn" id="avatar-remove-btn" type="button">移除图片</button>
+            </div>
+            <div id="avatar-upload-error" class="error-msg" style="margin-top: 6px; display: none;"></div>
+          </div>
+        </div>
+        <div style="font-size: 11px; color: var(--text-muted);">建议尺寸：200×200像素，将自动压缩</div>
+      </div>
+    </div>
+
+    <div style="margin-bottom: 20px;">
+      <label>昵称</label>
+      <input type="text" id="profile-edit-name" placeholder="请输入昵称..." maxlength="20">
+      <div id="profile-edit-name-error" class="error-msg" style="margin-top: 6px; display: none;"></div>
+    </div>
+
+    <div style="margin-bottom: 24px;">
+      <label>自我介绍 <span style="font-weight:400;color:var(--text-muted);font-size:11px;margin-left:4px;">（可选，最多100字）</span></label>
+      <textarea id="profile-edit-bio" placeholder="介绍一下自己..." maxlength="100"></textarea>
+      <div style="font-size:11px;color:var(--text-muted);text-align:right;margin-top:4px;"><span id="profile-edit-bio-counter">0</span>/100</div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn-secondary" id="profile-edit-cancel">取消</button>
+      <button class="btn-primary" id="profile-edit-save">保存更改</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
      TOAST CONTAINER
      ============================================================ -->
 <div id="toast-container"></div>
@@ -1369,6 +1531,7 @@ let users         = {};      // id -> { id, name, avatar_color, created_at }
 let messages      = {};      // id -> normalized message object
 let notifs        = [];      // array of notification objects
 let followingSet  = new Set(); // IDs the current user follows
+let onlineUsers   = {};         // user_id -> presence data (id, name, avatar_color, avatar_url, bio, etc.)
 let currentUserId = localStorage.getItem('stx_currentUserId') || null;
 let currentUser   = null;
 let userGpsLocation = null;
@@ -1631,6 +1794,7 @@ function normalizeMessage(row) {
     image_data: row.image_data || null,
     icon_type: row.icon_type || 'dot',
     is_real_location: !!row.is_real_location,
+    is_anonymous: !!row.is_anonymous,
     created_at: row.created_at,
     last_activity_at: row.last_activity_at,
     expires_at: row.expires_at,
@@ -1684,8 +1848,17 @@ function loginUser(user) {
 function updateHeaderUI() {
   if (!currentUser) return;
   const av = document.getElementById('header-avatar');
-  av.textContent = initials(currentUser.name);
-  av.style.background = currentUser.avatar_color || '#00d4ff';
+  const avatarUrl = currentUser.avatar_url || null;
+  const avatarColor = currentUser.avatar_color || '#00d4ff';
+
+  if (avatarUrl) {
+    av.innerHTML = '<img src="' + avatarUrl + '" alt="头像" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
+    av.style.background = 'transparent';
+  } else {
+    av.textContent = initials(currentUser.name);
+    av.style.background = avatarColor;
+  }
+
   document.getElementById('header-name').textContent = currentUser.name;
 }
 
@@ -2230,24 +2403,348 @@ function openProfileModal() {
   if (!currentUser) return;
   const myMessages = Object.values(messages).filter(function(m) { return m.user_id === currentUserId; });
   const totalLikes = myMessages.reduce(function(a, m) { return a + (m.likes ? m.likes.length : 0); }, 0);
+
+  const avatarUrl = currentUser.avatar_url || null;
+  const avatarColor = currentUser.avatar_color || '#00d4ff';
+  const bio = currentUser.bio || '';
+
+  let avatarHtml = '';
+  if (avatarUrl) {
+    avatarHtml = '<img src="' + avatarUrl + '" alt="' + escHtml(currentUser.name) + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
+  } else {
+    avatarHtml = initials(currentUser.name);
+  }
+
   document.getElementById('profile-content').innerHTML =
     '<div class="profile-header">'
-    + '<div class="profile-avatar" style="background:' + (currentUser.avatar_color || '#00d4ff') + '">' + initials(currentUser.name) + '</div>'
+    + '<div class="profile-avatar" style="background:' + (avatarUrl ? 'transparent' : avatarColor) + '">' + avatarHtml + '</div>'
     + '<div class="profile-info">'
     + '<div class="profile-name">' + escHtml(currentUser.name) + '</div>'
+    + (bio ? '<div class="profile-bio" style="font-size:12px;color:var(--text-muted);margin-top:4px;">' + escHtml(bio) + '</div>' : '')
     + '<div class="profile-since">加入于 ' + new Date(currentUser.created_at).toLocaleDateString('zh-CN') + '</div>'
     + '</div></div>'
     + '<div class="profile-stats">'
     + '<div class="profile-stat"><div class="profile-stat-num">' + myMessages.length + '</div><div class="profile-stat-label">信息</div></div>'
     + '<div class="profile-stat"><div class="profile-stat-num">' + followingSet.size + '</div><div class="profile-stat-label">关注</div></div>'
     + '<div class="profile-stat"><div class="profile-stat-num">' + totalLikes + '</div><div class="profile-stat-label">获赞</div></div>'
+    + '</div>'
+    + '<div class="profile-actions" style="margin-top:20px;text-align:center;">'
+    + '<button class="btn-primary" id="profile-edit-btn" style="padding:8px 20px;font-size:13px;">编辑资料</button>'
     + '</div>';
   document.getElementById('profile-modal').classList.remove('hidden');
+
+  // 绑定编辑按钮事件
+  const editBtn = document.getElementById('profile-edit-btn');
+  if (editBtn) {
+    editBtn.addEventListener('click', function() {
+      document.getElementById('profile-modal').classList.add('hidden');
+      openProfileEditModal();
+    });
+  }
 }
 
 document.getElementById('profile-close').addEventListener('click', function() {
   document.getElementById('profile-modal').classList.add('hidden');
 });
+
+/* ================================================================
+   ONLINE USERS MODAL
+   ================================================================ */
+document.getElementById('online-pill').addEventListener('click', openOnlineUsersModal);
+
+document.getElementById('online-users-close').addEventListener('click', function() {
+  document.getElementById('online-users-modal').classList.add('hidden');
+});
+
+/* ================================================================
+   PROFILE EDIT MODAL
+   ================================================================ */
+function openProfileEditModal() {
+  if (!currentUser) return;
+
+  const avatarUrl = currentUser.avatar_url || null;
+  const avatarColor = currentUser.avatar_color || '#00d4ff';
+
+  // 更新头像预览
+  const avatarPreview = document.getElementById('avatar-preview');
+  if (avatarPreview) {
+    if (avatarUrl) {
+      avatarPreview.innerHTML = '<img src="' + avatarUrl + '" alt="头像" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
+      avatarPreview.style.background = 'transparent';
+    } else {
+      avatarPreview.innerHTML = initials(currentUser.name);
+      avatarPreview.style.background = avatarColor;
+    }
+  }
+
+  // 设置表单字段
+  document.getElementById('profile-edit-name').value = currentUser.name || '';
+  document.getElementById('profile-edit-bio').value = currentUser.bio || '';
+  document.getElementById('profile-edit-bio-counter').textContent = (currentUser.bio || '').length;
+
+  // 隐藏错误消息
+  document.getElementById('profile-edit-name-error').style.display = 'none';
+  document.getElementById('avatar-upload-error').style.display = 'none';
+
+  // 重置上传预览
+  const previewContainer = document.getElementById('avatar-upload-preview');
+  const previewImg = document.getElementById('avatar-preview-img');
+  if (previewContainer) previewContainer.style.display = 'none';
+  if (previewImg) previewImg.src = '';
+
+  // 打开模态框
+  document.getElementById('profile-edit-modal').classList.remove('hidden');
+}
+
+// 头像上传处理
+let avatarUploadData = null;
+
+document.getElementById('avatar-upload-area').addEventListener('click', function() {
+  document.getElementById('avatar-upload-input').click();
+});
+
+document.getElementById('avatar-upload-input').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  // 验证文件类型
+  const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+  if (!validTypes.includes(file.type)) {
+    showError('avatar-upload-error', '请上传 JPEG、PNG 或 WebP 格式的图片');
+    return;
+  }
+
+  // 验证文件大小（1MB）
+  if (file.size > 1024 * 1024) {
+    showError('avatar-upload-error', '图片大小不能超过 1MB');
+    return;
+  }
+
+  // 清除之前的错误
+  document.getElementById('avatar-upload-error').style.display = 'none';
+
+  // 压缩图片
+  compressImage(file, 200, 200, 0.8)
+    .then(function(dataUrl) {
+      avatarUploadData = dataUrl;
+
+      // 显示预览
+      const previewContainer = document.getElementById('avatar-upload-preview');
+      const previewImg = document.getElementById('avatar-preview-img');
+      if (previewContainer && previewImg) {
+        previewImg.src = dataUrl;
+        previewContainer.style.display = 'block';
+      }
+
+      // 更新头像预览
+      const avatarPreview = document.getElementById('avatar-preview');
+      if (avatarPreview) {
+        avatarPreview.innerHTML = '<img src="' + dataUrl + '" alt="预览" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
+        avatarPreview.style.background = 'transparent';
+      }
+    })
+    .catch(function(err) {
+      showError('avatar-upload-error', '图片处理失败: ' + err.message);
+    });
+});
+
+// 移除头像
+document.getElementById('avatar-remove-btn').addEventListener('click', function() {
+  avatarUploadData = null;
+  const previewContainer = document.getElementById('avatar-upload-preview');
+  const previewImg = document.getElementById('avatar-preview-img');
+  if (previewContainer) previewContainer.style.display = 'none';
+  if (previewImg) previewImg.src = '';
+
+  // 恢复默认头像预览
+  const avatarPreview = document.getElementById('avatar-preview');
+  if (avatarPreview) {
+    avatarPreview.innerHTML = initials(currentUser.name);
+    avatarPreview.style.background = currentUser.avatar_color || '#00d4ff';
+  }
+
+  document.getElementById('avatar-upload-error').style.display = 'none';
+});
+
+// 自我介绍字数统计
+document.getElementById('profile-edit-bio').addEventListener('input', function() {
+  const length = this.value.length;
+  document.getElementById('profile-edit-bio-counter').textContent = length;
+});
+
+// 保存资料
+document.getElementById('profile-edit-save').addEventListener('click', async function() {
+  if (!currentUser) return;
+
+  const nameInput = document.getElementById('profile-edit-name');
+  const bioInput = document.getElementById('profile-edit-bio');
+  const name = nameInput.value.trim();
+  const bio = bioInput.value.trim();
+
+  // 验证昵称
+  if (!name) {
+    showError('profile-edit-name-error', '昵称不能为空');
+    return;
+  }
+  if (name.length > 20) {
+    showError('profile-edit-name-error', '昵称不能超过20个字符');
+    return;
+  }
+
+  // 清除错误
+  document.getElementById('profile-edit-name-error').style.display = 'none';
+
+  this.disabled = true;
+  this.textContent = '保存中...';
+
+  try {
+    let avatarUrl = currentUser.avatar_url;
+
+    // 如果有新头像上传
+    if (avatarUploadData) {
+      const url = await uploadAvatarToStorage(avatarUploadData);
+      if (url) avatarUrl = url;
+    }
+
+    // 更新用户资料
+    const { data, error } = await sb.from('stx_users')
+      .update({
+        name: name,
+        bio: bio,
+        avatar_url: avatarUrl,
+        avatar_updated_at: new Date().toISOString()
+      })
+      .eq('id', currentUserId)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // 更新本地用户数据
+    currentUser.name = name;
+    currentUser.bio = bio;
+    currentUser.avatar_url = avatarUrl;
+    users[currentUserId] = currentUser;
+
+    // 更新在线状态（传递新资料）
+    if (presenceChannel) {
+      await presenceChannel.track({
+        user_id: currentUserId,
+        name: currentUser.name,
+        avatar_color: currentUser.avatar_color || '#00d4ff',
+        avatar_url: currentUser.avatar_url || null,
+        bio: currentUser.bio || null,
+        updated_at: new Date().toISOString()
+      });
+    }
+
+    // 更新头部UI
+    updateHeaderUI();
+
+    // 关闭模态框
+    document.getElementById('profile-edit-modal').classList.add('hidden');
+
+    // 显示成功消息
+    showToast('资料已更新', 'success');
+  } catch (err) {
+    showToast('保存失败: ' + err.message, 'error');
+  } finally {
+    this.disabled = false;
+    this.textContent = '保存更改';
+  }
+});
+
+// 取消编辑
+document.getElementById('profile-edit-cancel').addEventListener('click', function() {
+  document.getElementById('profile-edit-modal').classList.add('hidden');
+});
+
+// 辅助函数
+function showError(elementId, message) {
+  const el = document.getElementById(elementId);
+  if (el) {
+    el.textContent = message;
+    el.style.display = 'block';
+  }
+}
+
+function compressImage(file, maxWidth, maxHeight, quality) {
+  return new Promise(function(resolve, reject) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const img = new Image();
+      img.onload = function() {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        // 计算缩放尺寸
+        if (width > height) {
+          if (width > maxWidth) {
+            height *= maxWidth / width;
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width *= maxHeight / height;
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // 转换为 data URL
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve(dataUrl);
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadAvatarToStorage(dataUrl) {
+  if (!currentUserId) throw new Error('用户未登录');
+
+  // 将 data URL 转换为 Blob
+  const blob = dataURLtoBlob(dataUrl);
+  const fileName = 'avatar_' + currentUserId + '_' + Date.now() + '.jpg';
+  const filePath = currentUserId + '/' + fileName;
+
+  // 上传到 Supabase 存储桶
+  const { data, error } = await sb.storage
+    .from('user-avatars')
+    .upload(filePath, blob, {
+      cacheControl: '3600',
+      upsert: true
+    });
+
+  if (error) throw error;
+
+  // 获取公开 URL
+  const { data: urlData } = sb.storage
+    .from('user-avatars')
+    .getPublicUrl(filePath);
+
+  return urlData.publicUrl;
+}
+
+function dataURLtoBlob(dataUrl) {
+  const arr = dataUrl.split(',');
+  const mime = arr[0].match(/:(.*?);/)[1];
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+  return new Blob([u8arr], { type: mime });
+}
 
 /* ================================================================
    SWITCH USER MODAL
@@ -2264,8 +2761,16 @@ function renderSwitchUserList() {
   const allUsers = Object.values(users);
   if (allUsers.length === 0) { list.innerHTML = ''; return; }
   list.innerHTML = allUsers.map(function(u) {
+    const avatarUrl = u.avatar_url || null;
+    const avatarColor = u.avatar_color || '#888';
+    let avatarHtml = '';
+    if (avatarUrl) {
+      avatarHtml = '<img src="' + avatarUrl + '" alt="' + escHtml(u.name) + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
+    } else {
+      avatarHtml = initials(u.name);
+    }
     return '<button class="switch-user-btn" data-uid="' + u.id + '" style="display:flex;align-items:center;gap:10px;text-align:left">'
-      + '<div class="avatar-circle" style="background:' + (u.avatar_color || '#888') + ';width:28px;height:28px;font-size:11px;flex-shrink:0">' + initials(u.name) + '</div>'
+      + '<div class="avatar-circle" style="background:' + (avatarUrl ? 'transparent' : avatarColor) + ';width:28px;height:28px;font-size:11px;flex-shrink:0">' + avatarHtml + '</div>'
       + '<span style="font-size:13px;color:var(--text-primary)">' + escHtml(u.name) + '</span>'
       + (u.id === currentUserId ? '<span style="font-size:11px;color:var(--cyan);margin-left:auto">当前</span>' : '')
       + '</button>';
@@ -2405,12 +2910,108 @@ function subscribePresence() {
       const count = Object.keys(state).length;
       const el = document.getElementById('online-count');
       if (el) el.textContent = count;
+
+      // 更新在线用户数据
+      onlineUsers = {};
+      Object.keys(state).forEach(function(userId) {
+        const presences = state[userId];
+        if (presences && presences.length > 0) {
+          const presenceData = presences[0];
+          onlineUsers[userId] = {
+            id: userId,
+            name: presenceData.name || '用户',
+            avatar_color: presenceData.avatar_color || '#00d4ff',
+            avatar_url: presenceData.avatar_url || null,
+            bio: presenceData.bio || null,
+            updated_at: presenceData.updated_at || new Date().toISOString()
+          };
+        }
+      });
+
+      // 如果在线用户列表模态框已打开，则更新UI
+      const onlineModal = document.getElementById('online-users-modal');
+      if (onlineModal && !onlineModal.classList.contains('hidden')) {
+        renderOnlineUsersList();
+      }
     })
     .subscribe(async function(status) {
       if (status === 'SUBSCRIBED') {
-        await presenceChannel.track({ user_id: currentUserId, name: currentUser.name });
+        await presenceChannel.track({
+          user_id: currentUserId,
+          name: currentUser.name,
+          avatar_color: currentUser.avatar_color || '#00d4ff',
+          avatar_url: currentUser.avatar_url || null,
+          bio: currentUser.bio || null,
+          updated_at: new Date().toISOString()
+        });
       }
     });
+}
+
+function renderOnlineUsersList() {
+  const container = document.getElementById('online-users-list');
+  const countEl = document.getElementById('online-users-count');
+  if (!container) return;
+
+  const onlineUserIds = Object.keys(onlineUsers);
+  const currentUserIds = onlineUserIds.filter(function(id) { return id !== currentUserId; });
+
+  if (countEl) countEl.textContent = currentUserIds.length;
+
+  if (currentUserIds.length === 0) {
+    container.innerHTML = '<div class="no-online-users" style="text-align:center;color:var(--text-muted);padding:40px 0;">暂无在线用户</div>';
+    return;
+  }
+
+  let html = '';
+  currentUserIds.forEach(function(userId) {
+    const user = onlineUsers[userId];
+    const avatarUrl = user.avatar_url || null;
+    const avatarColor = user.avatar_color || '#00d4ff';
+    const isFollowing = followingSet.has(userId);
+    const bio = user.bio ? escHtml(user.bio) : '';
+
+    html += '<div class="online-user-item" data-user-id="' + userId + '">';
+    html += '<div class="online-user-avatar" style="background:' + (avatarUrl ? 'transparent' : avatarColor) + '">';
+    if (avatarUrl) {
+      html += '<img src="' + avatarUrl + '" alt="' + escHtml(user.name) + '" loading="lazy">';
+    } else {
+      html += initials(user.name);
+    }
+    html += '</div>';
+    html += '<div class="online-user-info">';
+    html += '<div class="online-user-name">' + escHtml(user.name) + '</div>';
+    if (bio) {
+      html += '<div class="online-user-bio">' + bio + '</div>';
+    }
+    html += '</div>';
+    html += '<div class="online-user-actions">';
+    html += '<button class="online-user-follow-btn' + (isFollowing ? ' following' : '') + '" data-user-id="' + userId + '">';
+    html += (isFollowing ? '已关注' : '关注');
+    html += '</button>';
+    html += '</div>';
+    html += '</div>';
+  });
+
+  container.innerHTML = html;
+
+  // 绑定关注按钮点击事件
+  container.querySelectorAll('.online-user-follow-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      const targetUserId = this.getAttribute('data-user-id');
+      if (!targetUserId) return;
+      toggleFollow(targetUserId);
+      // 更新按钮状态
+      const isFollowing = followingSet.has(targetUserId);
+      this.textContent = isFollowing ? '已关注' : '关注';
+      this.classList.toggle('following', isFollowing);
+    });
+  });
+}
+
+function openOnlineUsersModal() {
+  renderOnlineUsersList();
+  document.getElementById('online-users-modal').classList.remove('hidden');
 }
 
 async function handleMessageChange(payload) {
@@ -2567,6 +3168,46 @@ async function init() {
 }
 
 init();
+
 </script>
+
+<!-- ============================================================
+     数据库升级说明
+     ============================================================
+
+为了使新功能正常工作，需要在 Supabase 中执行以下 SQL 语句：
+
+1. 添加新字段到 stx_users 表：
+   ```
+   ALTER TABLE stx_users
+   ADD COLUMN IF NOT EXISTS avatar_url TEXT,
+   ADD COLUMN IF NOT EXISTS bio VARCHAR(100),
+   ADD COLUMN IF NOT EXISTS avatar_updated_at TIMESTAMPTZ;
+   ```
+
+2. 创建头像存储桶（在 Supabase 控制台中操作）：
+   - 存储桶名称：user-avatars
+   - 权限：public（读取），authenticated（写入）
+   - 大小限制：1MB
+   - 允许的文件类型：image/jpeg, image/png, image/webp
+   - 启用防盗链：可选
+
+3. 存储桶策略 SQL：
+   ```
+   -- 允许认证用户上传
+   CREATE POLICY "认证用户可上传头像"
+   ON storage.objects FOR INSERT
+   TO authenticated
+   WITH CHECK (bucket_id = 'user-avatars');
+
+   -- 允许公开读取
+   CREATE POLICY "公开读取头像"
+   ON storage.objects FOR SELECT
+   TO public
+   USING (bucket_id = 'user-avatars');
+   ```
+
+完成上述步骤后，新功能即可正常使用。
+-->
 </body>
 </html>
